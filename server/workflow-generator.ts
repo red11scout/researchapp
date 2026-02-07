@@ -233,7 +233,7 @@ Generate realistic, industry-specific workflow steps that address the specific f
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 10000,
       messages: [{ role: "user", content: prompt }],
     });
@@ -1038,7 +1038,7 @@ Generate realistic, industry-specific workflow steps. Return ONLY valid JSON.`;
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5-20250929",
       max_tokens: 8000,
       messages: [{ role: "user", content: prompt }],
     });
