@@ -6,6 +6,10 @@ import {
   calculateRevenueBenefit,
   calculateCashFlowBenefit,
   calculateRiskBenefit,
+  calculateCostBenefitSafe,
+  calculateRevenueBenefitSafe,
+  calculateCashFlowBenefitSafe,
+  calculateRiskBenefitSafe,
   calculateTokenCost,
   calculateTotalAnnualValue,
   calculatePriorityScore,
@@ -21,7 +25,77 @@ import {
   generateThreeScenarioSummary,
   calculateMultiYearProjection,
   DEFAULT_MULTIPLIERS,
+  INPUT_BOUNDS,
+  validateInputs,
 } from "../src/calc/formulas";
+
+// ============================================================================
+// PER-USE-CASE REVENUE CAP — No single use case can exceed 15% of revenue
+// ============================================================================
+const PER_USE_CASE_REVENUE_CAP_PCT = 0.15;
+
+// ============================================================================
+// STEP 3 CROSS-REFERENCE: Build lookup of actual hours by friction point
+// ============================================================================
+interface FrictionHoursLookup {
+  frictionPoint: string;
+  actualHours: number;
+  loadedHourlyRate: number;
+}
+
+function buildFrictionHoursLookup(step3Data: Step3Record[]): Map<string, FrictionHoursLookup> {
+  const lookup = new Map<string, FrictionHoursLookup>();
+  for (const record of step3Data) {
+    const fp = record["Friction Point"] || "";
+    const hours = typeof record["Annual Hours"] === "number"
+      ? record["Annual Hours"]
+      : parseFloat(String(record["Annual Hours"] || "0").replace(/,/g, "")) || 0;
+    const rate = typeof record["Hourly Rate"] === "number"
+      ? record["Hourly Rate"]
+      : parseFloat(String(record["Hourly Rate"] || DEFAULT_MULTIPLIERS.loadedHourlyRate).replace(/[$,]/g, "")) || DEFAULT_MULTIPLIERS.loadedHourlyRate;
+    if (fp && hours > 0) {
+      lookup.set(fp, { frictionPoint: fp, actualHours: hours, loadedHourlyRate: rate });
+    }
+  }
+  return lookup;
+}
+
+/**
+ * Cross-reference parsed cost hours against Step 3 friction data.
+ * If the AI hallucinated a wildly inflated number (e.g. 420M instead of 28K),
+ * use the Step 3 actual hours as ground truth.
+ */
+function validateCostHoursAgainstStep3(
+  parsedHours: number,
+  useCaseId: string,
+  step4Data: Step4Record[] | null,
+  frictionLookup: Map<string, FrictionHoursLookup>,
+  totalStep3Hours: number,
+): { correctedHours: number; warning: string | null } {
+  // If parsedHours is within reasonable bounds (< 500K), trust it
+  if (parsedHours <= INPUT_BOUNDS.hoursSaved.max) {
+    return { correctedHours: parsedHours, warning: null };
+  }
+
+  // Try to find matching Step 3 friction point via Step 4 link
+  if (step4Data) {
+    const step4Record = step4Data.find(r => r.ID === useCaseId);
+    const targetFriction = step4Record?.["Target Friction"] || "";
+    const frictionData = frictionLookup.get(targetFriction);
+    if (frictionData && frictionData.actualHours > 0) {
+      const warning = `[SANITY CHECK] ${useCaseId}: AI formula claimed ${parsedHours.toLocaleString()} hours, but Step 3 friction data shows ${frictionData.actualHours.toLocaleString()} hours for "${targetFriction.substring(0, 50)}...". Using Step 3 value.`;
+      console.warn(warning);
+      return { correctedHours: frictionData.actualHours, warning };
+    }
+  }
+
+  // Fallback: If no Step 3 match, cap at a reasonable fraction of total Step 3 hours
+  // No single use case should consume more than total friction hours
+  const cappedHours = Math.min(parsedHours, totalStep3Hours, INPUT_BOUNDS.hoursSaved.max);
+  const warning = `[SANITY CHECK] ${useCaseId}: AI formula claimed ${parsedHours.toLocaleString()} hours, capped to ${cappedHours.toLocaleString()} (max of Step 3 total ${totalStep3Hours.toLocaleString()} or INPUT_BOUNDS max ${INPUT_BOUNDS.hoursSaved.max.toLocaleString()}).`;
+  console.warn(warning);
+  return { correctedHours: cappedHours, warning };
+}
 
 interface Step0Record {
   "Annual Revenue ($)"?: string;
@@ -213,32 +287,60 @@ function parseCostFormulaInputs(formula: string): CostInputs | null {
   };
 }
 
-// Recalculate cost benefit using deterministic formula
-function recalculateCostBenefit(formula: string): { value: number; formulaText: string } {
+// Recalculate cost benefit using deterministic formula WITH Step 3 cross-reference
+function recalculateCostBenefit(
+  formula: string,
+  useCaseId?: string,
+  step4Data?: Step4Record[] | null,
+  frictionLookup?: Map<string, FrictionHoursLookup>,
+  totalStep3Hours?: number,
+): { value: number; formulaText: string; warnings: string[] } {
+  const warnings: string[] = [];
+
   if (isNoValue(formula)) {
-    return { value: 0, formulaText: "No direct cost reduction" };
+    return { value: 0, formulaText: "No direct cost reduction", warnings };
   }
 
   const inputs = parseCostFormulaInputs(formula);
 
   if (!inputs) {
     console.log(`[recalculateCostBenefit] Could not parse inputs from: ${formula}`);
-    return { value: 0, formulaText: formula };
+    return { value: 0, formulaText: formula, warnings };
   }
 
-  // Use the deterministic formula function
-  const result = calculateCostBenefit({
-    hoursSaved: inputs.hoursSaved,
+  // CRITICAL FIX: Cross-reference parsed hours against Step 3 friction data
+  let correctedHours = inputs.hoursSaved;
+  if (useCaseId && frictionLookup && totalStep3Hours !== undefined) {
+    const validation = validateCostHoursAgainstStep3(
+      inputs.hoursSaved,
+      useCaseId,
+      step4Data || null,
+      frictionLookup,
+      totalStep3Hours,
+    );
+    correctedHours = validation.correctedHours;
+    if (validation.warning) {
+      warnings.push(validation.warning);
+    }
+  }
+
+  // Use the SAFE deterministic formula function (enforces INPUT_BOUNDS)
+  const result = calculateCostBenefitSafe({
+    hoursSaved: correctedHours,
     loadedHourlyRate: inputs.loadedHourlyRate,
     benefitsLoading: DEFAULT_MULTIPLIERS.benefitsLoading,
     costRealizationMultiplier: inputs.adoptionMultiplier,
     dataMaturityMultiplier: inputs.dataMaturityMultiplier,
   });
 
-  // Generate formula text with correct result - includes BenefitsLoading (1.35)
-  const newFormula = `${formatHours(inputs.hoursSaved)} × $${inputs.loadedHourlyRate}/hr × 1.35 × ${inputs.adoptionMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
+  if (result.inputsClamped) {
+    warnings.push(...result.validationWarnings);
+  }
 
-  return { value: result.value, formulaText: newFormula };
+  // Generate formula text with correct result - includes BenefitsLoading (1.35)
+  const newFormula = `${formatHours(correctedHours)} × $${inputs.loadedHourlyRate}/hr × 1.35 × ${inputs.adoptionMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
+
+  return { value: result.value, formulaText: newFormula, warnings };
 }
 
 // Parse revenue formula inputs
@@ -291,9 +393,11 @@ function parseRevenueFormulaInputs(formula: string): RevenueInputs | null {
   };
 }
 
-function recalculateRevenueBenefit(formula: string): { value: number; formulaText: string } {
+function recalculateRevenueBenefit(formula: string): { value: number; formulaText: string; warnings: string[] } {
+  const warnings: string[] = [];
+
   if (isNoValue(formula)) {
-    return { value: 0, formulaText: "No direct revenue impact" };
+    return { value: 0, formulaText: "No direct revenue impact", warnings };
   }
 
   const inputs = parseRevenueFormulaInputs(formula);
@@ -301,14 +405,19 @@ function recalculateRevenueBenefit(formula: string): { value: number; formulaTex
   if (!inputs) {
     // Cannot parse - log warning and return 0 to avoid incorrect values
     console.warn(`[recalculateRevenueBenefit] Could not parse formula, returning 0: ${formula}`);
-    return { value: 0, formulaText: formula + " (could not validate)" };
+    return { value: 0, formulaText: formula + " (could not validate)", warnings };
   }
 
-  const result = calculateRevenueBenefit(inputs);
+  // Use the SAFE wrapper (enforces INPUT_BOUNDS on uplift % and baseline revenue)
+  const result = calculateRevenueBenefitSafe(inputs);
+
+  if (result.inputsClamped) {
+    warnings.push(...result.validationWarnings);
+  }
 
   const newFormula = `${(inputs.upliftPct * 100).toFixed(0)}% × ${formatMoney(inputs.baselineRevenueAtRisk)} × ${inputs.revenueRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
 
-  return { value: result.value, formulaText: newFormula };
+  return { value: result.value, formulaText: newFormula, warnings };
 }
 
 // Parse cash flow formula inputs
@@ -364,9 +473,11 @@ function parseCashFlowFormulaInputs(formula: string): CashFlowInputs | null {
   };
 }
 
-function recalculateCashFlowBenefit(formula: string): { value: number; formulaText: string } {
+function recalculateCashFlowBenefit(formula: string): { value: number; formulaText: string; warnings: string[] } {
+  const warnings: string[] = [];
+
   if (isNoValue(formula)) {
-    return { value: 0, formulaText: "No direct cash flow impact" };
+    return { value: 0, formulaText: "No direct cash flow impact", warnings };
   }
 
   const inputs = parseCashFlowFormulaInputs(formula);
@@ -374,10 +485,11 @@ function recalculateCashFlowBenefit(formula: string): { value: number; formulaTe
   if (!inputs) {
     // Cannot parse - log warning and return 0 to avoid incorrect values
     console.warn(`[recalculateCashFlowBenefit] Could not parse formula, returning 0: ${formula}`);
-    return { value: 0, formulaText: formula + " (could not validate)" };
+    return { value: 0, formulaText: formula + " (could not validate)", warnings };
   }
 
-  const result = calculateCashFlowBenefit({
+  // Use the SAFE wrapper (enforces INPUT_BOUNDS on days, revenue, cost of capital)
+  const result = calculateCashFlowBenefitSafe({
     daysImprovement: inputs.daysImprovement,
     annualRevenue: inputs.annualRevenue,
     costOfCapital: inputs.costOfCapital,
@@ -385,10 +497,14 @@ function recalculateCashFlowBenefit(formula: string): { value: number; formulaTe
     dataMaturityMultiplier: inputs.dataMaturityMultiplier,
   });
 
+  if (result.inputsClamped) {
+    warnings.push(...result.validationWarnings);
+  }
+
   // Updated formula text to show correct working capital calculation
   const newFormula = `${inputs.annualRevenue.toLocaleString()} × (${inputs.daysImprovement} / 365) × ${inputs.costOfCapital.toFixed(2)} × ${inputs.cashFlowRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
 
-  return { value: result.value, formulaText: newFormula };
+  return { value: result.value, formulaText: newFormula, warnings };
 }
 
 // Parse risk formula inputs
@@ -444,9 +560,11 @@ function parseRiskFormulaInputs(formula: string): RiskInputs | null {
   };
 }
 
-function recalculateRiskBenefit(formula: string): { value: number; formulaText: string } {
+function recalculateRiskBenefit(formula: string): { value: number; formulaText: string; warnings: string[] } {
+  const warnings: string[] = [];
+
   if (isNoValue(formula)) {
-    return { value: 0, formulaText: "No quantifiable risk reduction" };
+    return { value: 0, formulaText: "No quantifiable risk reduction", warnings };
   }
 
   const inputs = parseRiskFormulaInputs(formula);
@@ -454,11 +572,11 @@ function recalculateRiskBenefit(formula: string): { value: number; formulaText: 
   if (!inputs) {
     // Cannot parse - log warning and return 0 to avoid incorrect values
     console.warn(`[recalculateRiskBenefit] Could not parse formula, returning 0: ${formula}`);
-    return { value: 0, formulaText: formula + " (could not validate)" };
+    return { value: 0, formulaText: formula + " (could not validate)", warnings };
   }
 
-  // Use the deterministic risk benefit calculation
-  const result = calculateRiskBenefit({
+  // Use the SAFE wrapper (enforces INPUT_BOUNDS on probabilities and impact)
+  const result = calculateRiskBenefitSafe({
     probBefore: inputs.probBefore,
     impactBefore: inputs.impactBefore,
     probAfter: inputs.probAfter,
@@ -467,9 +585,13 @@ function recalculateRiskBenefit(formula: string): { value: number; formulaText: 
     dataMaturityMultiplier: inputs.dataMaturityMultiplier,
   });
 
+  if (result.inputsClamped) {
+    warnings.push(...result.validationWarnings);
+  }
+
   const newFormula = `${(inputs.probBefore * 100).toFixed(0)}% × ${formatMoney(inputs.impactBefore)} × ${inputs.riskRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
 
-  return { value: result.value, formulaText: newFormula };
+  return { value: result.value, formulaText: newFormula, warnings };
 }
 
 // Parse friction point cost from AI-generated text
@@ -661,6 +783,19 @@ export function postProcessAnalysis(analysisResult: any): any {
   }
 
   // ============================================
+  // BUILD STEP 3 FRICTION HOURS LOOKUP (for cross-referencing)
+  // ============================================
+  let frictionLookup = new Map<string, FrictionHoursLookup>();
+  let totalStep3Hours = 0;
+  if (step3?.data && Array.isArray(step3.data)) {
+    frictionLookup = buildFrictionHoursLookup(step3.data as Step3Record[]);
+    frictionLookup.forEach((entry) => {
+      totalStep3Hours += entry.actualHours;
+    });
+    console.log(`[postProcessAnalysis] Built friction lookup: ${frictionLookup.size} entries, total Step 3 hours = ${totalStep3Hours.toLocaleString()}`);
+  }
+
+  // ============================================
   // STEP 5: BENEFITS QUANTIFICATION PROCESSING
   // ============================================
   if (!step5?.data || !Array.isArray(step5.data)) {
@@ -668,7 +803,7 @@ export function postProcessAnalysis(analysisResult: any): any {
     return analysisResult;
   }
 
-  console.log("[postProcessAnalysis] Processing", step5.data.length, "use cases with deterministic formulas");
+  console.log("[postProcessAnalysis] Processing", step5.data.length, "use cases with deterministic formulas + Step 3 cross-reference");
 
   // Recalculate all Step 5 benefits using deterministic formulas
   const correctedStep5Data: Step5Record[] = [];
@@ -686,28 +821,61 @@ export function postProcessAnalysis(analysisResult: any): any {
     hoursSaved?: number;
   }> = [];
 
+  // Accumulate all per-use-case warnings during recalculation
+  const allUseCaseWarnings: string[] = [];
+
+  // Per-use-case revenue cap (15% of annual revenue)
+  const perUseCaseMaxValue = annualRevenueFromStep0 > 0
+    ? annualRevenueFromStep0 * PER_USE_CASE_REVENUE_CAP_PCT
+    : Infinity;
+
   for (const record of step5.data as Step5Record[]) {
-    const costResult = recalculateCostBenefit(record["Cost Formula"] || "");
+    // CRITICAL FIX: Pass Step 3 cross-reference data to cost recalculation
+    const costResult = recalculateCostBenefit(
+      record["Cost Formula"] || "",
+      record.ID,
+      step4?.data ? (step4.data as Step4Record[]) : null,
+      frictionLookup,
+      totalStep3Hours,
+    );
     const revenueResult = recalculateRevenueBenefit(record["Revenue Formula"] || "");
     const cashFlowResult = recalculateCashFlowBenefit(record["Cash Flow Formula"] || "");
     const riskResult = recalculateRiskBenefit(record["Risk Formula"] || "");
 
-    const totalBenefits = costResult.value + revenueResult.value + cashFlowResult.value + riskResult.value;
+    // Collect all warnings from individual recalculations
+    const ucWarnings = [
+      ...costResult.warnings,
+      ...revenueResult.warnings,
+      ...cashFlowResult.warnings,
+      ...riskResult.warnings,
+    ];
+
+    let costVal = costResult.value;
+    let revVal = revenueResult.value;
+    let cfVal = cashFlowResult.value;
+    let riskVal = riskResult.value;
+    let ucTotal = costVal + revVal + cfVal + riskVal;
+
+    // PER-USE-CASE REVENUE CAP: No single use case exceeds 15% of annual revenue
+    if (annualRevenueFromStep0 > 0 && ucTotal > perUseCaseMaxValue) {
+      const ucCapScale = perUseCaseMaxValue / ucTotal;
+      const warning = `[PER-UC CAP] ${record.ID} "${record["Use Case"]}": Total ${formatMoney(ucTotal)} exceeds ${(PER_USE_CASE_REVENUE_CAP_PCT * 100).toFixed(0)}% of revenue (${formatMoney(perUseCaseMaxValue)}). Scaling by ${ucCapScale.toFixed(3)}.`;
+      console.warn(warning);
+      ucWarnings.push(warning);
+
+      costVal *= ucCapScale;
+      revVal *= ucCapScale;
+      cfVal *= ucCapScale;
+      riskVal *= ucCapScale;
+      ucTotal = perUseCaseMaxValue;
+    }
+
     const prob = record["Probability of Success"] || 0.75;
 
-    // Use the deterministic total value calculation
-    const totalValueResult = calculateTotalAnnualValue({
-      costBenefit: costResult.value,
-      revenueBenefit: revenueResult.value,
-      cashFlowBenefit: cashFlowResult.value,
-      riskBenefit: riskResult.value,
-      annualRevenue: annualRevenueFromStep0,
-    });
-
-    totalCostBenefit += costResult.value;
-    totalRevenueBenefit += revenueResult.value;
-    totalCashFlowBenefit += cashFlowResult.value;
-    totalRiskBenefit += riskResult.value;
+    totalCostBenefit += costVal;
+    totalRevenueBenefit += revVal;
+    totalCashFlowBenefit += cfVal;
+    totalRiskBenefit += riskVal;
 
     // Extract hours saved for cross-validation
     const costFormula = record["Cost Formula"] || "";
@@ -716,33 +884,36 @@ export function postProcessAnalysis(analysisResult: any): any {
 
     useCaseBenefitsForValidation.push({
       id: record.ID,
-      costBenefit: costResult.value,
-      revenueBenefit: revenueResult.value,
-      cashFlowBenefit: cashFlowResult.value,
-      riskBenefit: riskResult.value,
+      costBenefit: costVal,
+      revenueBenefit: revVal,
+      cashFlowBenefit: cfVal,
+      riskBenefit: riskVal,
       hoursSaved,
     });
 
     correctedStep5Data.push({
       ...record,
-      "Cost Benefit ($)": formatMoney(costResult.value),
+      "Cost Benefit ($)": formatMoney(costVal),
       "Cost Formula": costResult.formulaText,
-      "Revenue Benefit ($)": formatMoney(revenueResult.value),
+      "Revenue Benefit ($)": formatMoney(revVal),
       "Revenue Formula": revenueResult.formulaText,
-      "Cash Flow Benefit ($)": formatMoney(cashFlowResult.value),
+      "Cash Flow Benefit ($)": formatMoney(cfVal),
       "Cash Flow Formula": cashFlowResult.formulaText,
-      "Risk Benefit ($)": formatMoney(riskResult.value),
+      "Risk Benefit ($)": formatMoney(riskVal),
       "Risk Formula": riskResult.formulaText,
-      "Total Annual Value ($)": formatMoney(totalValueResult.value),
+      "Total Annual Value ($)": formatMoney(ucTotal),
     });
 
-    console.log(`[postProcessAnalysis] ${record.ID}: Cost=${formatMoney(costResult.value)}, Revenue=${formatMoney(revenueResult.value)}, CashFlow=${formatMoney(cashFlowResult.value)}, Risk=${formatMoney(riskResult.value)}, Total=${formatMoney(totalValueResult.value)}`);
+    // Collect per-use-case warnings for the validation report
+    allUseCaseWarnings.push(...ucWarnings);
+
+    console.log(`[postProcessAnalysis] ${record.ID}: Cost=${formatMoney(costVal)}, Revenue=${formatMoney(revVal)}, CashFlow=${formatMoney(cfVal)}, Risk=${formatMoney(riskVal)}, Total=${formatMoney(ucTotal)}${ucWarnings.length > 0 ? ` [${ucWarnings.length} warnings]` : ''}`);
   }
 
   // ============================================
   // STEP 5: CROSS-VALIDATION & BENEFITS CAP
   // ============================================
-  const validationWarnings: string[] = [];
+  const validationWarnings: string[] = [...allUseCaseWarnings];
   let benefitsCapped = false;
   let capScaleFactor = 1.0;
 
@@ -834,20 +1005,38 @@ export function postProcessAnalysis(analysisResult: any): any {
   }
 
   // Recalculate Step 6 token costs using deterministic formula
+  // AND reorder columns into logical groups:
+  //   AI Execution: ID, Use Case, Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost
+  //   Implementation: Effort Score, Data Readiness, Integration Complexity, Change Mgmt, Time-to-Value
   let totalMonthlyTokens = 0;
 
   if (step6?.data && Array.isArray(step6.data)) {
-    const correctedStep6Data: Step6Record[] = [];
+    const correctedStep6Data: any[] = [];
 
     for (const record of step6.data as Step6Record[]) {
       const tokenResult = calculateTokenCostFromStep6(record);
       totalMonthlyTokens += tokenResult.monthlyTokens;
 
-      correctedStep6Data.push({
-        ...record,
+      // Build record with logically ordered columns
+      const orderedRecord: Record<string, any> = {
+        // Group 1: Identity
+        "ID": record.ID,
+        "Use Case": record["Use Case"],
+        // Group 2: AI Execution
+        "Runs/Month": record["Runs/Month"],
+        "Input Tokens/Run": record["Input Tokens/Run"],
+        "Output Tokens/Run": record["Output Tokens/Run"],
         "Monthly Tokens": tokenResult.monthlyTokens,
         "Annual Token Cost ($)": formatMoney(tokenResult.annualCost),
-      });
+        // Group 3: Implementation Readiness
+        "Effort Score (1-5)": record["Effort Score (1-5)"],
+        "Data Readiness (1-5)": record["Data Readiness (1-5)"],
+        "Integration Complexity (1-5)": record["Integration Complexity (1-5)"],
+        "Change Mgmt (1-5)": record["Change Mgmt (1-5)"],
+        "Time-to-Value (months)": record["Time-to-Value (months)"],
+      };
+
+      correctedStep6Data.push(orderedRecord);
     }
 
     step6.data = correctedStep6Data;

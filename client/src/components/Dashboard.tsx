@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  ZAxis, Cell 
+import {
+  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ZAxis, Cell, ReferenceLine, ReferenceArea, Label
 } from 'recharts';
-import { 
-  ArrowRight, TrendingUp, Shield, Banknote, Activity, 
+import {
+  ArrowRight, TrendingUp, Shield, Banknote, Activity,
   ChevronRight, Clock, Zap, CheckCircle2, Lock, Share2, Download, FileText, Check
 } from 'lucide-react';
 import { format } from '@/lib/formatters';
@@ -43,7 +43,9 @@ const BRAND = {
   light: '#F8FAFC',
   success: '#059669',
   warning: '#D97706',
-  danger: '#DC2626'
+  danger: '#DC2626',
+  teal: '#0D9488',
+  gray: '#94A3B8',
 };
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -56,6 +58,14 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Lock
 };
 
+// Pillar color mapping for insight cards
+const PILLAR_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
+  Revenue: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', icon: 'bg-emerald-100' },
+  Cost: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: 'bg-blue-100' },
+  CashFlow: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: 'bg-amber-100' },
+  Risk: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: 'bg-indigo-100' },
+};
+
 interface KPI {
   id: number;
   label: string;
@@ -65,12 +75,22 @@ interface KPI {
   desc: string;
 }
 
+// Value Driver Insight card
+interface ValueInsight {
+  pillar: string;
+  title: string;
+  metric: string;
+  description: string;
+  pctOfTotal: number;
+  iconName: string;
+}
+
 interface MatrixDataPoint {
   name: string;
-  x: number;
-  y: number;
-  z: number;
-  type: string;
+  x: number;  // Implementation Readiness (0-100)
+  y: number;  // Business Value (0-100)
+  z: number;  // Effort Score (1-5)
+  type: string;  // Quadrant label
   color: string;
 }
 
@@ -98,6 +118,7 @@ interface DashboardData {
     title: string;
     description: string;
     kpis: KPI[];
+    insights?: ValueInsight[];
   };
   priorityMatrix: {
     title: string;
@@ -125,92 +146,38 @@ const DEFAULT_DATA: DashboardData = {
     title: "Value Drivers",
     description: "Our analysis projects $81.1M in annual value across four strategic pillars, with a heavy concentration in risk mitigation and cost reduction.",
     kpis: [
-      { 
-        id: 1, 
-        label: "Revenue Growth", 
-        value: "$20.4M", 
-        growth: "+25%", 
-        iconName: "TrendingUp", 
-        desc: "Commercial Lending & Wealth" 
-      },
-      { 
-        id: 2, 
-        label: "Cost Reduction", 
-        value: "$24.9M", 
-        growth: "-31%", 
-        iconName: "Activity", 
-        desc: "Back-office Automation" 
-      },
-      { 
-        id: 3, 
-        label: "Cash Flow", 
-        value: "$9.8M", 
-        growth: "+12%", 
-        iconName: "Banknote", 
-        desc: "Cycle Time Optimization" 
-      },
-      { 
-        id: 4, 
-        label: "Risk Mitigation", 
-        value: "$26.0M", 
-        growth: "-32%", 
-        iconName: "Shield", 
-        desc: "AML & Fraud Detection" 
-      }
-    ]
+      { id: 1, label: "Revenue Growth", value: "$20.4M", growth: "+25%", iconName: "TrendingUp", desc: "Commercial Lending & Wealth" },
+      { id: 2, label: "Cost Reduction", value: "$24.9M", growth: "-31%", iconName: "Activity", desc: "Back-office Automation" },
+      { id: 3, label: "Cash Flow", value: "$9.8M", growth: "+12%", iconName: "Banknote", desc: "Cycle Time Optimization" },
+      { id: 4, label: "Risk Mitigation", value: "$26.0M", growth: "-32%", iconName: "Shield", desc: "AML & Fraud Detection" }
+    ],
+    insights: [
+      { pillar: "Revenue", title: "Revenue Growth", metric: "$20.4M", description: "25% of total value from commercial lending and wealth management uplift.", pctOfTotal: 25, iconName: "TrendingUp" },
+      { pillar: "Cost", title: "Cost Reduction", metric: "$24.9M", description: "31% of total value from back-office automation and document processing.", pctOfTotal: 31, iconName: "Activity" },
+      { pillar: "CashFlow", title: "Cash Flow Acceleration", metric: "$9.8M", description: "12% of total value from cycle time optimization across lending operations.", pctOfTotal: 12, iconName: "Banknote" },
+      { pillar: "Risk", title: "Risk Mitigation", metric: "$26.0M", description: "32% of total value from enhanced AML, fraud detection, and compliance.", pctOfTotal: 32, iconName: "Shield" },
+    ],
   },
   priorityMatrix: {
-    title: "Strategic Priority Matrix",
-    description: "We mapped the top initiatives by Value (Y) vs. Time-to-Value (X).\nSize represents Implementation Complexity (Smaller = Easier).",
+    title: "Value-Readiness Matrix",
+    description: "Initiatives mapped by Business Value vs. Implementation Readiness.\nBubble size indicates Implementation Effort (smaller = easier).",
     data: [
-      { name: 'Auto Credit Memo', x: 14, y: 19.4, z: 4, type: 'High Value', color: BRAND.primary }, 
-      { name: 'AML Alert Triage', x: 11, y: 9.2, z: 3, type: 'Quick Win', color: BRAND.accent },
-      { name: 'Portfolio Stress Test', x: 15, y: 10.2, z: 4, type: 'Strategic', color: BRAND.primary },
-      { name: 'Wealth Advisor Suite', x: 9, y: 9.8, z: 3, type: 'Quick Win', color: BRAND.success },
-      { name: 'Banking Copilot', x: 12, y: 7.1, z: 3, type: 'Balanced', color: BRAND.accent },
-      { name: 'Legacy Code Docs', x: 6, y: 1.7, z: 2, type: 'Low Hanging Fruit', color: BRAND.success },
+      { name: 'Auto Credit Memo', x: 35, y: 85, z: 4, type: 'Strategic Bet', color: BRAND.primary },
+      { name: 'AML Alert Triage', x: 70, y: 75, z: 3, type: 'Quick Win', color: BRAND.success },
+      { name: 'Portfolio Stress Test', x: 30, y: 70, z: 4, type: 'Strategic Bet', color: BRAND.primary },
+      { name: 'Wealth Advisor Suite', x: 65, y: 68, z: 3, type: 'Quick Win', color: BRAND.success },
+      { name: 'Banking Copilot', x: 55, y: 50, z: 3, type: 'Easy Gain', color: BRAND.teal },
+      { name: 'Legacy Code Docs', x: 80, y: 20, z: 2, type: 'Easy Gain', color: BRAND.teal },
     ]
   },
   useCases: {
     title: "Use Case Discovery",
     description: "Explore the high-impact engines of the AI Strategy.",
     items: [
-      {
-        id: 'UC-01',
-        title: 'Wealth Advisor Productivity Suite',
-        value: '$9.8M',
-        impact: 'Reclaims 18 hrs/week per advisor',
-        tokens: '31.3M / mo',
-        complexity: 'Medium',
-        tags: ['Sales', 'Growth']
-      },
-      {
-        id: 'UC-02',
-        title: 'Intelligent AML Alert Triage',
-        value: '$9.2M',
-        impact: 'Reduces false positives by 70%',
-        tokens: '67.8M / mo',
-        complexity: 'High',
-        tags: ['Risk', 'Compliance']
-      },
-      {
-        id: 'UC-03',
-        title: 'Automated Credit Memo',
-        value: '$19.4M',
-        impact: 'Reduces cycle time to 18 days',
-        tokens: '3.1M / mo',
-        complexity: 'Critical',
-        tags: ['Lending', 'Efficiency']
-      },
-      {
-        id: 'UC-04',
-        title: 'Continuous Stress Testing',
-        value: '$10.2M',
-        impact: 'Weekly vs. Quarterly cadence',
-        tokens: '90.8k / mo',
-        complexity: 'High',
-        tags: ['Risk', 'Analytics']
-      }
+      { id: 'UC-01', title: 'Wealth Advisor Productivity Suite', value: '$9.8M', impact: 'Reclaims 18 hrs/week per advisor', tokens: '31.3M / mo', complexity: 'Medium', tags: ['Sales', 'Growth'] },
+      { id: 'UC-02', title: 'Intelligent AML Alert Triage', value: '$9.2M', impact: 'Reduces false positives by 70%', tokens: '67.8M / mo', complexity: 'High', tags: ['Risk', 'Compliance'] },
+      { id: 'UC-03', title: 'Automated Credit Memo', value: '$19.4M', impact: 'Reduces cycle time to 18 days', tokens: '3.1M / mo', complexity: 'Critical', tags: ['Lending', 'Efficiency'] },
+      { id: 'UC-04', title: 'Continuous Stress Testing', value: '$10.2M', impact: 'Weekly vs. Quarterly cadence', tokens: '90.8k / mo', complexity: 'High', tags: ['Risk', 'Analytics'] }
     ]
   }
 };
@@ -225,10 +192,10 @@ interface AnimatedCounterProps {
 const AnimatedCounter = ({ value, prefix = "", suffix = "", formatter = format.number }: AnimatedCounterProps) => {
   const [displayValue, setDisplayValue] = useState(0);
   const numericValue = parseFloat(value);
-  
+
   useEffect(() => {
     if (isNaN(numericValue)) return;
-    
+
     let start = 0;
     const end = numericValue;
     const duration = 2000;
@@ -247,9 +214,8 @@ const AnimatedCounter = ({ value, prefix = "", suffix = "", formatter = format.n
     return () => clearInterval(timer);
   }, [numericValue]);
 
-  // Handle null/undefined/NaN with em-dash
   if (isNaN(numericValue)) {
-    return <span className="tabular-nums">—</span>;
+    return <span className="tabular-nums">&mdash;</span>;
   }
 
   return (
@@ -259,8 +225,8 @@ const AnimatedCounter = ({ value, prefix = "", suffix = "", formatter = format.n
 
 const FlywheelBackground = () => (
   <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-10">
-    <motion.svg 
-      viewBox="0 0 100 100" 
+    <motion.svg
+      viewBox="0 0 100 100"
       className="absolute top-1/2 left-1/2 w-[150vh] h-[150vh] -translate-x-1/2 -translate-y-1/2"
       animate={{ rotate: 360 }}
       transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
@@ -301,19 +267,19 @@ const StickyHeader = ({ clientName, onShareUrl, onViewHTMLReport }: StickyHeader
   };
 
   return (
-    <motion.header 
+    <motion.header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white/90 backdrop-blur-md shadow-sm py-2 md:py-3' : 'bg-transparent py-3 md:py-6'}`}
       initial={{ y: -100 }}
       animate={{ y: 0 }}
     >
-      <div className="max-w-7xl mx-auto px-3 md:px-6 flex justify-between items-center">
+      <div className="max-w-[1600px] mx-auto px-3 md:px-6 flex justify-between items-center">
         <div className="flex items-center gap-2 md:gap-4">
           <div className="font-bold text-xl md:text-2xl tracking-tighter text-[#0339AF]">BlueAlly</div>
           <div className="h-6 w-px bg-gray-300 hidden md:block"></div>
           <div className="text-gray-500 font-medium hidden md:block">{clientName} Assessment</div>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          <button 
+          <button
             onClick={handleShare}
             className="p-2 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors flex items-center gap-2 min-w-[40px] min-h-[40px] justify-center"
             data-testid="button-share-url"
@@ -322,7 +288,7 @@ const StickyHeader = ({ clientName, onShareUrl, onViewHTMLReport }: StickyHeader
             {copied ? <Check className="w-4 h-4 text-green-600" /> : <Share2 className="w-4 h-4 text-gray-600" />}
             <span className="hidden md:inline text-sm text-gray-600">{copied ? 'Copied!' : 'Share'}</span>
           </button>
-          <button 
+          <button
             onClick={onViewHTMLReport}
             className="bg-[#0339AF] hover:bg-[#4C73E9] text-white px-3 md:px-6 py-2 rounded-full font-semibold text-xs md:text-sm transition-colors shadow-lg flex items-center gap-1 md:gap-2 group min-h-[40px]"
             data-testid="button-html-report"
@@ -346,12 +312,12 @@ const HeroSection = ({ data, clientName }: HeroSectionProps) => {
   return (
     <section className="relative min-h-screen flex flex-col justify-center items-center text-center px-4 md:px-6 overflow-hidden bg-gradient-to-b from-slate-50 to-white pt-20 md:pt-0">
       <FlywheelBackground />
-      
-      <motion.div 
+
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8 }}
-        className="z-10 max-w-4xl"
+        className="z-10 max-w-6xl"
       >
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs md:text-sm font-semibold mb-4 md:mb-6 border border-blue-100">
           <span className="relative flex h-2 w-2">
@@ -360,11 +326,11 @@ const HeroSection = ({ data, clientName }: HeroSectionProps) => {
           </span>
           AI Strategic Assessment
         </div>
-        
+
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-extrabold tracking-tight text-[#0F172A] mb-4 md:mb-8 leading-tight">
           {data.titlePrefix} <span className="text-[#0339AF]">{data.titleHighlight}</span> for <br/>{clientName}
         </h1>
-        
+
         <div className="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-12 mt-4 md:mt-8">
           <div className="text-center md:text-left">
             <p className="text-gray-500 text-xs md:text-sm font-semibold uppercase tracking-wider mb-1">Total Value Opportunity</p>
@@ -372,10 +338,10 @@ const HeroSection = ({ data, clientName }: HeroSectionProps) => {
               <AnimatedCounter value={data.totalValue} prefix="$" suffix={data.valueSuffix} />
             </div>
           </div>
-          
+
           <div className="hidden md:block h-24 w-px bg-gray-200"></div>
-          
-          <div className="text-center md:text-left max-w-xs px-4 md:px-0">
+
+          <div className="text-center md:text-left max-w-md px-4 md:px-0">
             <p className="text-base md:text-lg text-gray-600 leading-relaxed">
               {sanitizeForProse(data.description)}
             </p>
@@ -383,7 +349,7 @@ const HeroSection = ({ data, clientName }: HeroSectionProps) => {
         </div>
       </motion.div>
 
-      <motion.div 
+      <motion.div
         className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 text-gray-400"
         animate={{ y: [0, 10, 0] }}
         transition={{ repeat: Infinity, duration: 2 }}
@@ -400,52 +366,108 @@ interface ExecutiveSummaryProps {
 }
 
 const ExecutiveSummary = ({ data }: ExecutiveSummaryProps) => {
+  const insights = data.insights || [];
+  const hasInsights = insights.length > 0;
+
   return (
-    <section className="py-12 md:py-24 bg-white relative">
-      <div className="max-w-7xl mx-auto px-4 md:px-6">
+    <section className="py-16 md:py-28 bg-white relative">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6">
         <div className="mb-8 md:mb-16">
           <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A] mb-2 md:mb-4">{data.title}</h2>
-          <p className="text-gray-600 max-w-2xl text-sm md:text-base">
-            {sanitizeForProse(data.description)}
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          {data.kpis.map((kpi, idx) => {
-            const IconComponent = ICON_MAP[kpi.iconName] || Activity;
-            
-            return (
-              <motion.div 
-                key={kpi.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                viewport={{ once: true }}
-                className="group p-5 md:p-8 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-900/5 transition-all duration-300 relative overflow-hidden"
-              >
-                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <IconComponent className="w-16 md:w-24 h-16 md:h-24 text-[#0339AF]" />
-                </div>
-                
-                <div className="relative z-10">
-                  <div className="flex items-center gap-3 mb-3 md:mb-4">
-                    <div className={`p-2 md:p-3 rounded-lg ${kpi.label.includes('Risk') ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
-                      <IconComponent className="w-5 h-5 md:w-6 md:h-6" />
+        {/* Structured Insight Cards — replaces wordy paragraph */}
+        {hasInsights ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 md:gap-6">
+            {insights.map((insight, idx) => {
+              const colors = PILLAR_COLORS[insight.pillar] || PILLAR_COLORS.Cost;
+              const IconComponent = ICON_MAP[insight.iconName] || Activity;
+
+              return (
+                <motion.div
+                  key={insight.pillar}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  viewport={{ once: true }}
+                  className={`group relative p-6 md:p-8 rounded-2xl border ${colors.border} ${colors.bg} hover:shadow-xl hover:shadow-blue-900/5 transition-all duration-300 overflow-hidden`}
+                >
+                  {/* Decorative bar on left */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${colors.text.replace('text-', 'bg-')}`} />
+
+                  <div className="relative z-10 pl-2">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`p-2 md:p-3 rounded-lg ${colors.icon} ${colors.text}`}>
+                        <IconComponent className="w-5 h-5 md:w-6 md:h-6" />
+                      </div>
+                      <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">{insight.title}</h3>
                     </div>
-                    <span className={`text-sm font-bold ${kpi.growth.startsWith('+') ? 'text-emerald-600' : 'text-blue-600'}`}>
-                      {kpi.growth}
-                    </span>
+
+                    <div className={`text-3xl md:text-4xl font-bold ${colors.text} mb-3`}>
+                      {insight.metric}
+                    </div>
+
+                    {/* Progress bar showing % of total */}
+                    <div className="w-full h-1.5 bg-gray-200 rounded-full mb-3">
+                      <motion.div
+                        className={`h-full rounded-full ${colors.text.replace('text-', 'bg-')}`}
+                        initial={{ width: 0 }}
+                        whileInView={{ width: `${insight.pctOfTotal}%` }}
+                        transition={{ duration: 1, delay: idx * 0.15 }}
+                        viewport={{ once: true }}
+                      />
+                    </div>
+
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {insight.description}
+                    </p>
                   </div>
-                  
-                  <h3 className="text-gray-500 font-medium text-sm mb-1">{kpi.label}</h3>
-                  <div className="text-3xl md:text-4xl font-bold text-[#0F172A] mb-3 md:mb-4">{kpi.value}</div>
-                  <div className="h-px w-full bg-slate-200 mb-3 md:mb-4"></div>
-                  <p className="text-sm text-gray-600">{kpi.desc}</p>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        ) : (
+          /* Fallback: KPI grid for backward compatibility */
+          <>
+            <p className="text-gray-600 max-w-2xl text-sm md:text-base mb-8">
+              {sanitizeForProse(data.description)}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+              {data.kpis.map((kpi, idx) => {
+                const IconComponent = ICON_MAP[kpi.iconName] || Activity;
+
+                return (
+                  <motion.div
+                    key={kpi.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.1 }}
+                    viewport={{ once: true }}
+                    className="group p-5 md:p-8 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-900/5 transition-all duration-300 relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                      <IconComponent className="w-16 md:w-24 h-16 md:h-24 text-[#0339AF]" />
+                    </div>
+                    <div className="relative z-10">
+                      <div className="flex items-center gap-3 mb-3 md:mb-4">
+                        <div className={`p-2 md:p-3 rounded-lg ${kpi.label.includes('Risk') ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>
+                          <IconComponent className="w-5 h-5 md:w-6 md:h-6" />
+                        </div>
+                        <span className={`text-sm font-bold ${kpi.growth.startsWith('+') ? 'text-emerald-600' : 'text-blue-600'}`}>
+                          {kpi.growth}
+                        </span>
+                      </div>
+                      <h3 className="text-gray-500 font-medium text-sm mb-1">{kpi.label}</h3>
+                      <div className="text-3xl md:text-4xl font-bold text-[#0F172A] mb-3 md:mb-4">{kpi.value}</div>
+                      <div className="h-px w-full bg-slate-200 mb-3 md:mb-4"></div>
+                      <p className="text-sm text-gray-600">{kpi.desc}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -455,12 +477,32 @@ interface PriorityMatrixProps {
   data: DashboardData['priorityMatrix'];
 }
 
+// Custom tooltip for the Value-Readiness Matrix
+const MatrixTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const point = payload[0].payload;
+    return (
+      <div className="bg-white p-4 rounded-xl shadow-2xl border border-slate-200 text-slate-900 max-w-xs">
+        <p className="font-bold text-lg mb-1">{point.name}</p>
+        <p className="text-sm font-semibold mb-2" style={{ color: point.color }}>{point.type}</p>
+        <div className="h-px bg-slate-100 my-2"></div>
+        <div className="space-y-1">
+          <p className="text-xs text-slate-500">Business Value Score: <span className="font-semibold text-slate-700">{point.y.toFixed(0)}/100</span></p>
+          <p className="text-xs text-slate-500">Readiness Score: <span className="font-semibold text-slate-700">{point.x.toFixed(0)}/100</span></p>
+          <p className="text-xs text-slate-500">Effort: <span className="font-semibold text-slate-700">{point.z}/5</span> (smaller bubble = easier)</p>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
   return (
-    <section className="py-12 md:py-24 bg-[#0F172A] text-white relative overflow-hidden">
+    <section className="py-16 md:py-28 bg-[#0F172A] text-white relative overflow-hidden">
       <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "url('https://grainy-gradients.vercel.app/noise.svg')" }}></div>
-      
-      <div className="max-w-7xl mx-auto px-4 md:px-6 relative z-10">
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6 relative z-10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 md:mb-12">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold mb-2 md:mb-4 text-white">{data.title}</h2>
@@ -468,62 +510,81 @@ const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
               {sanitizeForProse(data.description)}
             </p>
           </div>
-          <div className="flex gap-4 mt-4 md:mt-0">
-            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#0339AF]"></div>High Value</div>
+          <div className="flex flex-wrap gap-3 md:gap-4 mt-4 md:mt-0">
             <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#059669]"></div>Quick Win</div>
+            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#0339AF]"></div>Strategic Bet</div>
+            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#0D9488]"></div>Easy Gain</div>
+            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#94A3B8]"></div>Defer</div>
           </div>
         </div>
 
         <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
-          <div className="h-48 md:h-64 lg:h-[500px] min-w-[500px] md:min-w-0 w-full bg-white/5 rounded-2xl p-3 md:p-6 border border-white/10 backdrop-blur-sm">
+          <div className="h-64 md:h-80 lg:h-[560px] min-w-[500px] md:min-w-0 w-full bg-white/5 rounded-2xl p-3 md:p-6 border border-white/10 backdrop-blur-sm">
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 10, right: 10, bottom: 20, left: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis 
-                  type="number" 
-                  dataKey="x" 
-                  name="Time to Value" 
-                  unit=" mo" 
+              <ScatterChart margin={{ top: 20, right: 30, bottom: 30, left: 30 }}>
+                {/* Quadrant background fills */}
+                <ReferenceArea x1={50} x2={100} y1={50} y2={100} fill="#059669" fillOpacity={0.06} />
+                <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#0339AF" fillOpacity={0.06} />
+                <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#0D9488" fillOpacity={0.06} />
+                <ReferenceArea x1={0} x2={50} y1={0} y2={50} fill="#94A3B8" fillOpacity={0.04} />
+
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.5} />
+
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  domain={[0, 100]}
                   stroke="#94a3b8"
-                  tick={{ fontSize: 10 }}
-                  label={{ value: 'Time to Value (Months)', position: 'insideBottom', offset: -10, fill: '#94a3b8', fontSize: 10 }} 
+                  tick={{ fontSize: 11 }}
+                  label={{ value: 'Implementation Readiness', position: 'insideBottom', offset: -15, fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
                 />
-                <YAxis 
-                  type="number" 
-                  dataKey="y" 
-                  name="Annual Value" 
-                  unit="M" 
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  domain={[0, 100]}
                   stroke="#94a3b8"
-                  tick={{ fontSize: 10 }}
-                  label={{ value: 'Annual Value ($M)', angle: -90, position: 'insideLeft', fill: '#94a3b8', fontSize: 10 }} 
+                  tick={{ fontSize: 11 }}
+                  label={{ value: 'Business Value', angle: -90, position: 'insideLeft', offset: -15, fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
                 />
-                <ZAxis type="number" dataKey="z" range={[60, 300]} />
-                <Tooltip 
-                  cursor={{ strokeDasharray: '3 3' }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const point = payload[0].payload;
-                      return (
-                        <div className="bg-white p-3 md:p-4 rounded-lg shadow-xl border border-slate-200 text-slate-900">
-                          <p className="font-bold text-sm md:text-lg mb-1">{point.name}</p>
-                          <p className="text-xs md:text-sm text-blue-600 font-semibold">{point.type}</p>
-                          <div className="h-px bg-slate-100 my-2"></div>
-                          <p className="text-xs text-slate-500">Value: ${point.y}M</p>
-                          <p className="text-xs text-slate-500">Timeline: {point.x} Months</p>
-                          <p className="text-xs text-slate-500">Complexity Score: {point.z}/5</p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
+                <ZAxis type="number" dataKey="z" range={[80, 400]} />
+
+                {/* Quadrant divider lines */}
+                <ReferenceLine x={50} stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5}>
+                  <Label value="" />
+                </ReferenceLine>
+                <ReferenceLine y={50} stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5}>
+                  <Label value="" />
+                </ReferenceLine>
+
+                <Tooltip content={<MatrixTooltip />} cursor={{ strokeDasharray: '3 3' }} />
+
                 <Scatter name="Initiatives" data={data.data} fill="#8884d8">
                   {data.data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+                    <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.9} stroke={entry.color} strokeWidth={2} />
                   ))}
                 </Scatter>
               </ScatterChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Quadrant labels below chart */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 md:mt-6">
+          <div className="bg-[#059669]/10 border border-[#059669]/20 rounded-lg p-3 text-center">
+            <p className="text-sm font-bold text-[#059669]">Quick Wins</p>
+            <p className="text-xs text-slate-400">High Value + High Readiness</p>
+          </div>
+          <div className="bg-[#0339AF]/10 border border-[#0339AF]/20 rounded-lg p-3 text-center">
+            <p className="text-sm font-bold text-[#4C73E9]">Strategic Bets</p>
+            <p className="text-xs text-slate-400">High Value + Low Readiness</p>
+          </div>
+          <div className="bg-[#0D9488]/10 border border-[#0D9488]/20 rounded-lg p-3 text-center">
+            <p className="text-sm font-bold text-[#0D9488]">Easy Gains</p>
+            <p className="text-xs text-slate-400">Low Value + High Readiness</p>
+          </div>
+          <div className="bg-[#94A3B8]/10 border border-[#94A3B8]/20 rounded-lg p-3 text-center">
+            <p className="text-sm font-bold text-[#94A3B8]">Defer</p>
+            <p className="text-xs text-slate-400">Low Value + Low Readiness</p>
           </div>
         </div>
       </div>
@@ -538,8 +599,8 @@ interface UseCaseCarouselProps {
 
 const UseCaseCarousel = ({ data, clientName }: UseCaseCarouselProps) => {
   return (
-    <section className="py-12 md:py-24 bg-slate-50">
-      <div className="max-w-7xl mx-auto px-4 md:px-6">
+    <section className="py-16 md:py-28 bg-slate-50">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-12 gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A]">{data.title}</h2>
@@ -556,14 +617,14 @@ const UseCaseCarousel = ({ data, clientName }: UseCaseCarouselProps) => {
             <div key={uc.id} className="w-full sm:min-w-[300px] md:min-w-[350px] lg:min-w-[400px] sm:w-auto bg-white rounded-xl shadow-sm border border-slate-200 p-4 md:p-6 flex flex-col snap-center hover:shadow-lg transition-shadow">
               <div className="flex justify-between items-start mb-3 md:mb-4">
                 <span className="bg-blue-50 text-[#0339AF] text-xs font-bold px-2 py-1 rounded uppercase tracking-wide">{uc.id}</span>
-                <span className={`text-xs px-2 py-1 rounded-full border ${uc.complexity === 'Critical' ? 'border-red-200 text-red-600 bg-red-50' : 'border-slate-200 text-slate-500'}`}>
+                <span className={`text-xs px-2 py-1 rounded-full border ${uc.complexity === 'Critical' ? 'border-red-200 text-red-600 bg-red-50' : uc.complexity === 'High' ? 'border-amber-200 text-amber-600 bg-amber-50' : 'border-slate-200 text-slate-500'}`}>
                   {uc.complexity}
                 </span>
               </div>
-              
+
               <h3 className="text-lg md:text-xl font-bold text-[#0F172A] mb-2">{uc.title}</h3>
               <p className="text-gray-600 text-sm mb-4 md:mb-6 flex-grow">{uc.impact}</p>
-              
+
               <div className="bg-slate-50 rounded-lg p-3 md:p-4 mb-4 md:mb-6">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs text-gray-500 uppercase font-semibold">Projected Value</span>
@@ -599,15 +660,15 @@ const CTASection = ({ totalValue, valueSuffix, onViewHTMLReport, onDownloadWorks
   return (
     <section className="py-16 md:py-32 bg-[#0339AF] text-white relative overflow-hidden">
       <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent"></div>
-      
-      <div className="max-w-4xl mx-auto px-4 md:px-6 text-center relative z-10">
+
+      <div className="max-w-5xl mx-auto px-4 md:px-6 text-center relative z-10">
         <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 md:mb-8 tracking-tight text-white">Ready to activate the Flywheel?</h2>
         <p className="text-blue-100 text-base md:text-lg lg:text-xl mb-8 md:mb-12 max-w-2xl mx-auto">
           The ${totalValue}{valueSuffix} opportunity is real. The next step is a 3-Day Use Case Workshop to transform this assessment into pilot-ready roadmaps.
         </p>
-        
+
         <div className="flex flex-col sm:flex-row justify-center items-center gap-3 md:gap-4">
-          <button 
+          <button
             onClick={onViewHTMLReport}
             className="w-full sm:w-auto bg-white text-[#0339AF] px-6 md:px-8 py-3 md:py-4 rounded-full font-bold text-base md:text-lg hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2 min-h-[48px]"
             data-testid="button-html-report-cta"
@@ -615,7 +676,7 @@ const CTASection = ({ totalValue, valueSuffix, onViewHTMLReport, onDownloadWorks
             Detailed HTML Report
             <FileText className="w-5 h-5" />
           </button>
-          <button 
+          <button
             onClick={onDownloadWorkshopPDF}
             className="w-full sm:w-auto px-6 md:px-8 py-3 md:py-4 rounded-full font-semibold text-white border border-white/30 hover:bg-white/10 transition-all flex items-center justify-center gap-2 min-h-[48px]"
             data-testid="button-workshop-details"
@@ -624,7 +685,7 @@ const CTASection = ({ totalValue, valueSuffix, onViewHTMLReport, onDownloadWorks
             Workshop Details
           </button>
         </div>
-        
+
         <div className="mt-8 md:mt-16 flex flex-col sm:flex-row justify-center gap-4 md:gap-8 text-blue-200 text-sm">
           <div className="flex items-center justify-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Executive Alignment
@@ -656,16 +717,16 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
       <ExecutiveSummary data={data.executiveSummary} />
       <PriorityMatrix data={data.priorityMatrix} />
       <UseCaseCarousel data={data.useCases} clientName={data.clientName} />
-      <CTASection 
-        totalValue={data.hero.totalValue} 
-        valueSuffix={data.hero.valueSuffix} 
+      <CTASection
+        totalValue={data.hero.totalValue}
+        valueSuffix={data.hero.valueSuffix}
         onViewHTMLReport={onViewHTMLReport}
         onDownloadWorkshopPDF={onDownloadWorkshopPDF}
       />
-      
+
       <footer className="bg-slate-900 text-slate-500 py-8 md:py-12 border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="text-xs md:text-sm text-center md:text-left">© 2025 BlueAlly. Confidential & Proprietary.</div>
+        <div className="max-w-[1600px] mx-auto px-4 md:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="text-xs md:text-sm text-center md:text-left">&copy; 2025 BlueAlly. Confidential &amp; Proprietary.</div>
           <div className="flex gap-4 md:gap-6">
             <a href="#" className="hover:text-white transition-colors text-sm">Privacy</a>
             <a href="#" className="hover:text-white transition-colors text-sm">Terms</a>
@@ -677,4 +738,4 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
   );
 }
 
-export type { DashboardData, KPI, MatrixDataPoint, UseCase };
+export type { DashboardData, KPI, MatrixDataPoint, UseCase, ValueInsight };

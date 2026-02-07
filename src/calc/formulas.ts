@@ -913,6 +913,157 @@ export function generateThreeScenarioSummary(inputs: {
 }
 
 // ============================================================================
+// SAFE WRAPPER FUNCTIONS — ENFORCE INPUT_BOUNDS BEFORE CALCULATION
+// These wrappers clamp all inputs to reasonable ranges before calling the
+// underlying calculation functions. Use these in the post-processor.
+// ============================================================================
+
+export interface SafeCalculationResult extends CalculationResult {
+  validationWarnings: string[];
+  inputsClamped: boolean;
+}
+
+/**
+ * Safe Cost Benefit — validates & clamps inputs before calculation
+ */
+export function calculateCostBenefitSafe(inputs: {
+  hoursSaved: number;
+  loadedHourlyRate?: number;
+  benefitsLoading?: number;
+  costRealizationMultiplier?: number;
+  dataMaturityMultiplier?: number;
+  scenario?: Scenario;
+}): SafeCalculationResult {
+  const validation = validateInputs(
+    {
+      hoursSaved: inputs.hoursSaved,
+      loadedHourlyRate: inputs.loadedHourlyRate || DEFAULT_MULTIPLIERS.loadedHourlyRate,
+    },
+    INPUT_BOUNDS
+  );
+
+  const clampedInputs = {
+    ...inputs,
+    hoursSaved: validation.clampedInputs.hoursSaved ?? inputs.hoursSaved,
+    loadedHourlyRate: validation.clampedInputs.loadedHourlyRate ?? inputs.loadedHourlyRate,
+  };
+
+  const result = calculateCostBenefit(clampedInputs);
+  return {
+    ...result,
+    validationWarnings: validation.warnings,
+    inputsClamped: validation.warnings.length > 0,
+  };
+}
+
+/**
+ * Safe Revenue Benefit — validates & clamps inputs before calculation
+ */
+export function calculateRevenueBenefitSafe(inputs: {
+  upliftPct: number;
+  baselineRevenueAtRisk: number;
+  marginPct?: number;
+  revenueRealizationMultiplier?: number;
+  dataMaturityMultiplier?: number;
+  scenario?: Scenario;
+}): SafeCalculationResult {
+  const validation = validateInputs(
+    {
+      upliftPct: inputs.upliftPct,
+      baselineRevenueAtRisk: inputs.baselineRevenueAtRisk,
+    },
+    INPUT_BOUNDS
+  );
+
+  const clampedInputs = {
+    ...inputs,
+    upliftPct: validation.clampedInputs.upliftPct ?? inputs.upliftPct,
+    baselineRevenueAtRisk: validation.clampedInputs.baselineRevenueAtRisk ?? inputs.baselineRevenueAtRisk,
+  };
+
+  const result = calculateRevenueBenefit(clampedInputs);
+  return {
+    ...result,
+    validationWarnings: validation.warnings,
+    inputsClamped: validation.warnings.length > 0,
+  };
+}
+
+/**
+ * Safe Cash Flow Benefit — validates & clamps inputs before calculation
+ */
+export function calculateCashFlowBenefitSafe(inputs: {
+  daysImprovement: number;
+  annualRevenue: number;
+  costOfCapital?: number;
+  cashFlowRealizationMultiplier?: number;
+  dataMaturityMultiplier?: number;
+  scenario?: Scenario;
+  dailyRevenue?: number;
+}): SafeCalculationResult {
+  const validation = validateInputs(
+    {
+      daysImprovement: inputs.daysImprovement,
+      annualRevenue: inputs.annualRevenue,
+      costOfCapital: inputs.costOfCapital || DEFAULT_MULTIPLIERS.defaultCostOfCapital,
+    },
+    INPUT_BOUNDS
+  );
+
+  const clampedInputs = {
+    ...inputs,
+    daysImprovement: validation.clampedInputs.daysImprovement ?? inputs.daysImprovement,
+    annualRevenue: validation.clampedInputs.annualRevenue ?? inputs.annualRevenue,
+    costOfCapital: validation.clampedInputs.costOfCapital ?? inputs.costOfCapital,
+  };
+
+  const result = calculateCashFlowBenefit(clampedInputs);
+  return {
+    ...result,
+    validationWarnings: validation.warnings,
+    inputsClamped: validation.warnings.length > 0,
+  };
+}
+
+/**
+ * Safe Risk Benefit — validates & clamps inputs before calculation
+ */
+export function calculateRiskBenefitSafe(inputs: {
+  probBefore: number;
+  impactBefore: number;
+  probAfter: number;
+  impactAfter: number;
+  riskRealizationMultiplier?: number;
+  dataMaturityMultiplier?: number;
+  scenario?: Scenario;
+}): SafeCalculationResult {
+  const validation = validateInputs(
+    {
+      probBefore: inputs.probBefore,
+      impactBefore: inputs.impactBefore,
+      probAfter: inputs.probAfter,
+      impactAfter: inputs.impactAfter,
+    },
+    INPUT_BOUNDS
+  );
+
+  const clampedInputs = {
+    ...inputs,
+    probBefore: validation.clampedInputs.probBefore ?? inputs.probBefore,
+    impactBefore: validation.clampedInputs.impactBefore ?? inputs.impactBefore,
+    probAfter: validation.clampedInputs.probAfter ?? inputs.probAfter,
+    impactAfter: validation.clampedInputs.impactAfter ?? inputs.impactAfter,
+  };
+
+  const result = calculateRiskBenefit(clampedInputs);
+  return {
+    ...result,
+    validationWarnings: validation.warnings,
+    inputsClamped: validation.warnings.length > 0,
+  };
+}
+
+// ============================================================================
 // FORMATTERS
 // ============================================================================
 

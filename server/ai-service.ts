@@ -368,6 +368,26 @@ Quantify ALL use cases across four drivers with EXPLICIT FORMULAS:
    - Cap risk reduction claims at 50% of current exposure
 </business_value_drivers>
 
+### CRITICAL NUMERIC BOUNDS — NEVER EXCEED
+These bounds are enforced by our deterministic post-processor. Your formulas must stay within them:
+- **Hours Saved per use case**: MUST be sourced from Step 3 friction data. Never exceed the "Annual Hours" value from the matching Step 3 friction point. Absolute max: 500,000 hours.
+- **Loaded Hourly Rate**: $25 – $500 per hour.
+- **Revenue Uplift %**: Max 50% of baseline revenue at risk.
+- **Days Improvement**: Max 365 days.
+- **Risk Impact**: Max $10B per exposure scenario.
+- **Per-Use-Case Cap**: No single use case total can exceed 15% of company annual revenue.
+- **Portfolio Cap**: Total benefits across all use cases cannot exceed 50% of annual revenue.
+
+### WRONG vs RIGHT EXAMPLE
+**WRONG** (hallucinated input): "420M hours × $150/hr × 0.55 × 0.90 × 0.75 = $23.6B"
+  - 420M hours is impossible. No single process has 420 million annual hours.
+  - The Step 3 friction data showed 28,000 annual hours for this friction point.
+
+**RIGHT** (sourced from Step 3): "28,000 hours × $150/hr × 0.55 × 0.90 × 0.75 = $1.56M"
+  - Hours match Step 3 data exactly. Result is plausible for a single use case.
+
+Always cross-reference your formula inputs against Step 3 data. If Step 3 says a friction point has 28,000 annual hours, your Step 5 formula MUST use ≤28,000 hours, not 420M.
+
 <conservative_estimation_framework>
 ═══════════════════════════════════════════════════════════════════
 MANDATORY REDUCTIONS - APPLY TO ALL CALCULATIONS
@@ -530,6 +550,8 @@ Before output, verify:
 □ Benefits rounded DOWN, timelines rounded UP
 □ Executive summary uses CONSERVATIVE scenario numbers only
 □ Cash flow benefits calculated as working capital × cost of capital
+□ SANITY CHECK: For each Step 5 use case, verify the hours in your cost formula match the hours in the corresponding Step 3 friction point. If they don't match, USE THE STEP 3 VALUE.
+□ SANITY CHECK: No single use case total should exceed 15% of company annual revenue. If it does, reduce the inputs.
 </quality_gates>
 
 <forbidden_outputs>
