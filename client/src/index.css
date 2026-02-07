@@ -1,0 +1,496 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* BlueAlly Brand Colors */
+  --color-blueally-navy: #0339AF;
+  --color-blueally-royal: #4C73E9;
+  --color-blueally-green: #7A8B51;
+  --color-blueally-dark: #0a192f;
+  --color-blueally-light: #f8faff;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Inter', system-ui, sans-serif;
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+  
+  /* Brand Colors */
+  --color-brand-navy: #0339AF;
+  --color-brand-blue: #4C73E9;
+  
+  /* Typography Scale - Font Sizes */
+  --font-size-display-2xl: 4.5rem;
+  --font-size-display-xl: 3.75rem;
+  --font-size-display-lg: 3rem;
+  --font-size-display: 2.25rem;
+  --font-size-heading-xl: 1.875rem;
+  --font-size-heading-lg: 1.5rem;
+  --font-size-heading: 1.25rem;
+  --font-size-heading-sm: 1.125rem;
+  --font-size-body-lg: 1.125rem;
+  --font-size-body: 1rem;
+  --font-size-body-sm: 0.875rem;
+  --font-size-body-xs: 0.8125rem;
+  --font-size-label: 0.875rem;
+  --font-size-label-sm: 0.75rem;
+  --font-size-caption: 0.75rem;
+  --font-size-overline: 0.6875rem;
+  
+  /* Line Heights */
+  --line-height-tightest: 1;
+  --line-height-tighter: 1.1;
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.7;
+  --line-height-loose: 1.8;
+  
+  /* Letter Spacing */
+  --tracking-tightest: -0.04em;
+  --tracking-tighter: -0.02em;
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.04em;
+  --tracking-widest: 0.08em;
+  
+  --radius: 0.75rem;
+}
+
+/* LIGHT MODE - BlueAlly Brand Style */
+:root {
+  /* Clean Light Background with slight blue tint */
+  --background: 220 50% 99%; /* #f8faff equivalent */
+  --foreground: 215 50% 15%; /* Dark Blue-Grey for text */
+
+  /* Card Surface */
+  --card: 0 0% 100%;
+  --card-foreground: 215 50% 15%;
+
+  /* Popovers */
+  --popover: 0 0% 100%;
+  --popover-foreground: 215 50% 15%;
+
+  /* Primary - BlueAlly Navy #0339AF */
+  --primary: 218 96% 35%;
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary - BlueAlly Royal #4C73E9 */
+  --secondary: 224 79% 61%;
+  --secondary-foreground: 0 0% 100%;
+
+  /* Muted */
+  --muted: 220 20% 96%;
+  --muted-foreground: 215 16% 47%;
+
+  /* Accent - BlueAlly Green #7A8B51 */
+  --accent: 78 27% 43%;
+  --accent-foreground: 0 0% 100%;
+
+  /* Destructive */
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+
+  /* Borders & Inputs */
+  --border: 220 20% 90%;
+  --input: 220 20% 90%;
+  --ring: 218 96% 35%; /* Matches primary */
+
+  /* Charts - BlueAlly themed */
+  --chart-1: 218 96% 35%; /* BlueAlly Navy */
+  --chart-2: 78 27% 43%;  /* BlueAlly Green */
+  --chart-3: 224 79% 61%; /* BlueAlly Royal */
+  --chart-4: 280 60% 60%; /* Purple accent */
+  --chart-5: 30 90% 50%;  /* Orange accent */
+
+  /* Sidebar */
+  --sidebar: 220 50% 99%;
+  --sidebar-foreground: 215 50% 15%;
+  --sidebar-primary: 218 96% 35%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 20% 96%;
+  --sidebar-accent-foreground: 215 50% 15%;
+  --sidebar-border: 220 20% 90%;
+  --sidebar-ring: 218 96% 35%;
+}
+
+/* DARK MODE - BlueAlly Executive Dark */
+.dark {
+  --background: 220 50% 8%; /* #0a192f equivalent */
+  --foreground: 220 20% 95%;
+
+  --card: 220 45% 12%;
+  --card-foreground: 220 20% 95%;
+
+  --popover: 220 45% 12%;
+  --popover-foreground: 220 20% 95%;
+
+  /* Primary - BlueAlly Navy (lighter for dark mode) */
+  --primary: 224 79% 61%; /* BlueAlly Royal for better visibility */
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary */
+  --secondary: 220 40% 20%;
+  --secondary-foreground: 220 20% 95%;
+
+  --muted: 220 40% 18%;
+  --muted-foreground: 220 15% 60%;
+
+  /* Accent - BlueAlly Green */
+  --accent: 78 35% 50%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 62.8% 45%;
+  --destructive-foreground: 220 20% 95%;
+
+  --border: 220 40% 20%;
+  --input: 220 40% 20%;
+  --ring: 224 79% 61%;
+
+  /* Charts - Dark mode adjusted */
+  --chart-1: 224 79% 61%;
+  --chart-2: 78 35% 55%;
+  --chart-3: 218 70% 50%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 30 85% 55%;
+
+  --sidebar: 220 50% 8%;
+  --sidebar-foreground: 220 20% 95%;
+  --sidebar-primary: 224 79% 61%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 220 40% 18%;
+  --sidebar-accent-foreground: 220 20% 95%;
+  --sidebar-border: 220 40% 20%;
+  --sidebar-ring: 224 79% 61%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-relaxed);
+  }
+  
+  h1 {
+    font-size: var(--font-size-display);
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--tracking-tighter);
+    font-weight: 600;
+    @apply text-slate-900;
+  }
+  
+  h2 {
+    font-size: var(--font-size-heading-xl);
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 600;
+    @apply text-slate-800;
+  }
+  
+  h3 {
+    font-size: var(--font-size-heading-lg);
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 600;
+    @apply text-slate-800;
+  }
+  
+  h4 {
+    font-size: var(--font-size-heading);
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 600;
+    @apply text-slate-700;
+  }
+  
+  h5, h6 {
+    font-size: var(--font-size-heading-sm);
+    line-height: var(--line-height-snug);
+    font-weight: 600;
+    @apply text-slate-700;
+  }
+  
+  p {
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-relaxed);
+    @apply text-slate-600;
+  }
+  
+  p + p {
+    @apply mt-4;
+  }
+  
+  a {
+    color: var(--color-brand-blue);
+    @apply transition-colors;
+  }
+  
+  a:hover {
+    color: var(--color-brand-navy);
+  }
+  
+  ::selection {
+    background-color: rgba(76, 115, 233, 0.2);
+    color: var(--color-brand-navy);
+  }
+  
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-brand-blue), 0 0 0 4px white;
+  }
+  
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  
+  code:not([class*="language-"]) {
+    @apply bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded font-mono;
+    font-size: var(--font-size-body-sm);
+  }
+}
+
+@layer components {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  
+  .prose-report {
+    @apply text-slate-700;
+  }
+  
+  .prose-report h1 {
+    font-size: var(--font-size-display);
+    line-height: var(--line-height-tight);
+    @apply text-slate-900 mb-6 mt-12 first:mt-0;
+  }
+  
+  .prose-report h2 {
+    font-size: var(--font-size-heading-xl);
+    line-height: var(--line-height-tight);
+    @apply text-slate-800 mb-4 mt-10;
+  }
+  
+  .prose-report h3 {
+    font-size: var(--font-size-heading-lg);
+    line-height: var(--line-height-snug);
+    @apply text-slate-700 mb-3 mt-8;
+  }
+  
+  .prose-report p {
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-relaxed);
+    @apply mb-4;
+  }
+  
+  .prose-report ul, .prose-report ol {
+    @apply mb-4 pl-6;
+  }
+  
+  .prose-report li {
+    @apply mb-2;
+  }
+  
+  .prose-report strong {
+    @apply font-semibold text-slate-800;
+  }
+  
+  /* Typography utility classes */
+  .text-display-2xl {
+    font-size: var(--font-size-display-2xl);
+    line-height: var(--line-height-tightest);
+    letter-spacing: var(--tracking-tighter);
+    font-weight: 700;
+  }
+  
+  .text-display-xl {
+    font-size: var(--font-size-display-xl);
+    line-height: var(--line-height-tightest);
+    letter-spacing: var(--tracking-tighter);
+    font-weight: 700;
+  }
+  
+  .text-display-lg {
+    font-size: var(--font-size-display-lg);
+    line-height: var(--line-height-tighter);
+    letter-spacing: var(--tracking-tighter);
+    font-weight: 600;
+  }
+  
+  .text-display {
+    font-size: var(--font-size-display);
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--tracking-tighter);
+    font-weight: 600;
+  }
+  
+  .text-heading-xl {
+    font-size: var(--font-size-heading-xl);
+    line-height: var(--line-height-tight);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 600;
+  }
+  
+  .text-heading-lg {
+    font-size: var(--font-size-heading-lg);
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 600;
+  }
+  
+  .text-heading {
+    font-size: var(--font-size-heading);
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--tracking-tight);
+    font-weight: 600;
+  }
+  
+  .text-heading-sm {
+    font-size: var(--font-size-heading-sm);
+    line-height: var(--line-height-snug);
+    font-weight: 600;
+  }
+  
+  .text-body-lg {
+    font-size: var(--font-size-body-lg);
+    line-height: var(--line-height-relaxed);
+  }
+  
+  .text-body {
+    font-size: var(--font-size-body);
+    line-height: var(--line-height-relaxed);
+  }
+  
+  .text-body-sm {
+    font-size: var(--font-size-body-sm);
+    line-height: var(--line-height-normal);
+  }
+  
+  .text-body-xs {
+    font-size: var(--font-size-body-xs);
+    line-height: var(--line-height-normal);
+  }
+  
+  .text-label {
+    font-size: var(--font-size-label);
+    line-height: var(--line-height-snug);
+    font-weight: 500;
+  }
+  
+  .text-label-sm {
+    font-size: var(--font-size-label-sm);
+    line-height: var(--line-height-snug);
+    font-weight: 500;
+  }
+  
+  .text-caption {
+    font-size: var(--font-size-caption);
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--tracking-wide);
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+  
+  .text-overline {
+    font-size: var(--font-size-overline);
+    line-height: var(--line-height-snug);
+    letter-spacing: var(--tracking-widest);
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(to right, var(--color-brand-navy), var(--color-brand-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .line-clamp-1 {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
