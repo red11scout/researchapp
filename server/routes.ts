@@ -2311,16 +2311,14 @@ Return ONLY valid JSON with this structure:
       // SPEC 3.3: Required global assumptions
       const hoursSaved = getNum("hours_saved_annually", 10000);
       const loadedHourlyRate = getNum("loaded_hourly_rate", formulas.DEFAULT_MULTIPLIERS.loadedHourlyRate);
-      const efficiencyMultiplier = getNum("efficiency_multiplier", formulas.DEFAULT_MULTIPLIERS.efficiencyMultiplier);
-      const adoptionMultiplier = getNum("adoption_multiplier", formulas.DEFAULT_MULTIPLIERS.adoptionMultiplier);
+      const costRealizationMultiplier = getNum("cost_realization", formulas.DEFAULT_MULTIPLIERS.costRealizationMultiplier);
       const dataMaturityMultiplier = getNum("data_maturity", formulas.DEFAULT_MULTIPLIERS.dataMaturityMultiplier);
 
-      // SPEC 3.2: CostBenefit = HoursSaved × LoadedRate × Efficiency × Adoption × DataMaturity
+      // SPEC 3.2: CostBenefit = HoursSaved × LoadedRate × BenefitsLoading × Realization × DataMaturity × Scenario
       const costBenefitResult = formulas.calculateCostBenefit({
         hoursSaved,
         loadedHourlyRate,
-        efficiencyMultiplier,
-        adoptionMultiplier,
+        costRealizationMultiplier,
         dataMaturityMultiplier,
       });
       calculationResults.costBenefit = costBenefitResult.value;
@@ -2342,16 +2340,16 @@ Return ONLY valid JSON with this structure:
       calculationResults.revenueBenefit = revenueBenefitResult.value;
       traces.revenueBenefit = revenueBenefitResult.trace;
 
-      // SPEC 3.2: CashFlowBenefit = DaysImprovement × DailyRevenue × WorkingCapitalPct × Realization × DataMaturity
+      // SPEC 3.2: CashFlowBenefit = AnnualRevenue × (DaysImprovement / 365) × CostOfCapital × Realization × DataMaturity
       const daysImprovement = getNum("dso_improvement_days", 5);
-      const dailyRevenue = baselineRevenueAtRisk / 365;
-      const workingCapitalPct = getNum("working_capital_pct", 1.0);
+      const annualRevenue = baselineRevenueAtRisk; // Use full annual revenue for working capital calculation
+      const costOfCapital = getNum("cost_of_capital", formulas.DEFAULT_MULTIPLIERS.defaultCostOfCapital);
       const cashFlowRealizationMultiplier = getNum("cashflow_realization", formulas.DEFAULT_MULTIPLIERS.cashFlowRealizationMultiplier);
 
       const cashFlowBenefitResult = formulas.calculateCashFlowBenefit({
         daysImprovement,
-        dailyRevenue,
-        workingCapitalPct,
+        annualRevenue,
+        costOfCapital,
         cashFlowRealizationMultiplier,
         dataMaturityMultiplier,
       });
@@ -2376,15 +2374,13 @@ Return ONLY valid JSON with this structure:
       calculationResults.riskBenefit = riskBenefitResult.value;
       traces.riskBenefit = riskBenefitResult.trace;
 
-      // Calculate total annual value
-      const probabilityOfSuccess = getNum("probability_of_success", formulas.DEFAULT_MULTIPLIERS.probabilityOfSuccess);
-
+      // Calculate total annual value (with revenue cap)
       const totalAnnualValueResult = formulas.calculateTotalAnnualValue({
         costBenefit: calculationResults.costBenefit,
         revenueBenefit: calculationResults.revenueBenefit,
         cashFlowBenefit: calculationResults.cashFlowBenefit,
         riskBenefit: calculationResults.riskBenefit,
-        probabilityOfSuccess,
+        annualRevenue: baselineRevenueAtRisk,
       });
       calculationResults.totalAnnualValue = totalAnnualValueResult.value;
       traces.totalAnnualValue = totalAnnualValueResult.trace;

@@ -1,7 +1,8 @@
 // src/calc/formulas.ts
 // Deterministic Formula Registry for BlueAlly AI Calculations
 // All monetary outputs must store a trace: formula + resolved inputs + intermediate steps
-// SPEC COMPLIANT: Follows Section 3.2 and 3.3 of build prompt
+// REDESIGNED: Fixes cash flow formula, adds scenario support, benefits cap, NPV, adoption curves,
+// 5-criterion priority scoring, friction-benefit linking, and input validation
 
 export interface FormulaInput {
   [key: string]: number;
@@ -19,61 +20,200 @@ export interface CalculationResult {
   trace: FormulaTrace;
 }
 
-// Global default multipliers (Section 3.3 Required Assumptions)
+// ============================================================================
+// SCENARIO SUPPORT
+// ============================================================================
+export type Scenario = 'conservative' | 'moderate' | 'aggressive';
+
+export const SCENARIO_MULTIPLIERS: Record<Scenario, number> = {
+  conservative: 0.60,
+  moderate: 1.00,
+  aggressive: 1.30,
+};
+
+// Adoption curves by scenario (Year 1 / Year 2 / Year 3)
+export const ADOPTION_CURVES: Record<Scenario, { y1: number; y2: number; y3: number }> = {
+  conservative: { y1: 0.25, y2: 0.50, y3: 0.70 },
+  moderate:     { y1: 0.40, y2: 0.65, y3: 0.85 },
+  aggressive:   { y1: 0.55, y2: 0.80, y3: 0.95 },
+};
+
+// ============================================================================
+// INPUT VALIDATION BOUNDS
+// ============================================================================
+export const INPUT_BOUNDS = {
+  hoursSaved:           { min: 0, max: 500_000, label: 'Hours Saved' },
+  loadedHourlyRate:     { min: 25, max: 500, label: 'Loaded Hourly Rate' },
+  upliftPct:            { min: 0, max: 0.50, label: 'Revenue Uplift %' },  // Max 50%
+  baselineRevenueAtRisk:{ min: 0, max: 500_000_000_000, label: 'Baseline Revenue at Risk' },
+  daysImprovement:      { min: 0, max: 365, label: 'Days Improvement' },
+  annualRevenue:        { min: 0, max: 500_000_000_000, label: 'Annual Revenue' },
+  costOfCapital:        { min: 0.01, max: 0.25, label: 'Cost of Capital' },
+  probBefore:           { min: 0, max: 1.0, label: 'Probability Before' },
+  impactBefore:         { min: 0, max: 10_000_000_000, label: 'Impact Before' },
+  probAfter:            { min: 0, max: 1.0, label: 'Probability After' },
+  impactAfter:          { min: 0, max: 10_000_000_000, label: 'Impact After' },
+  runsPerMonth:         { min: 0, max: 10_000_000, label: 'Runs per Month' },
+  annualHours:          { min: 0, max: 500_000, label: 'Annual Hours' },
+} as const;
+
+export interface ValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  clampedInputs: Record<string, number>;
+}
+
+/**
+ * Validate and clamp numeric inputs to reasonable bounds
+ */
+export function validateInputs(inputs: Record<string, number>, bounds: Record<string, { min: number; max: number; label: string }>): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const clampedInputs: Record<string, number> = {};
+
+  for (const [key, value] of Object.entries(inputs)) {
+    const bound = bounds[key];
+    if (!bound) {
+      clampedInputs[key] = value;
+      continue;
+    }
+
+    if (typeof value !== 'number' || isNaN(value)) {
+      errors.push(`${bound.label}: must be a valid number`);
+      clampedInputs[key] = 0;
+      continue;
+    }
+
+    if (value < bound.min) {
+      warnings.push(`${bound.label}: ${value} below minimum ${bound.min}, clamped`);
+      clampedInputs[key] = bound.min;
+    } else if (value > bound.max) {
+      warnings.push(`${bound.label}: ${value} above maximum ${bound.max}, clamped`);
+      clampedInputs[key] = bound.max;
+    } else {
+      clampedInputs[key] = value;
+    }
+  }
+
+  return { isValid: errors.length === 0, errors, warnings, clampedInputs };
+}
+
+// ============================================================================
+// NAMED CONSTANTS (no more magic numbers)
+// ============================================================================
+export const ROUNDING = {
+  BENEFIT_PRECISION: 100_000,   // Round DOWN to nearest $100K
+  FRICTION_PRECISION: 10_000,   // Round DOWN to nearest $10K
+  TOKEN_DECIMALS: 2,            // Token costs: 2 decimal places
+} as const;
+
+export const PRIORITY_WEIGHTS = {
+  strategicAlignment: 0.25,
+  financialImpact: 0.25,
+  implementationComplexity: 0.20,
+  dataReadiness: 0.15,
+  timeToValue: 0.15,
+} as const;
+
+export const PRIORITY_TIERS = {
+  TIER_1: { min: 80, label: 'Tier 1 — Quick Win' },
+  TIER_2: { min: 60, label: 'Tier 2 — Strategic' },
+  TIER_3: { min: 40, label: 'Tier 3 — Foundation' },
+  TIER_4: { min: 0,  label: 'Tier 4 — Horizon' },
+} as const;
+
+export const TTV_THRESHOLDS = {
+  PERFECT_MONTHS: 3,   // 3 months or less = 100 score
+  ZERO_MONTHS: 18,     // 18+ months = 0 score (changed from 12 to be more realistic)
+} as const;
+
+// Global default multipliers — documented with rationale
 export const DEFAULT_MULTIPLIERS = {
-  // Section 3.3 - Required global assumptions
+  // Fully-loaded labor rate including wages, benefits, overhead
   loadedHourlyRate: 150,
-  efficiencyMultiplier: 0.85,      // Efficiency factor (0-1)
-  adoptionMultiplier: 0.70,         // Expected adoption rate (0-1)
-  dataMaturityMultiplier: 0.75,     // Data maturity factor (0-1)
-  
-  // Realization multipliers (probability-weighted adjustments)
-  costRealizationMultiplier: 0.90,
+
+  // Benefits loading factor: adds 35% for employer costs (taxes, benefits, space)
+  benefitsLoading: 1.35,
+
+  // Data maturity adjustment (Level 2 default = 0.75)
+  // Level 1: 0.60, Level 2: 0.75, Level 3: 0.85, Level 4: 0.95, Level 5: 1.00
+  dataMaturityMultiplier: 0.75,
+
+  // Driver-specific realization multipliers (confidence in benefit type)
+  // Revenue: 95% — most measurable, tied to pipeline/bookings
   revenueRealizationMultiplier: 0.95,
+  // Cost: 90% — requires adoption tracking, some leakage expected
+  costRealizationMultiplier: 0.90,
+  // Cash Flow: 85% — working capital is harder to control precisely
   cashFlowRealizationMultiplier: 0.85,
+  // Risk: 80% — most uncertain, actuarial nature
   riskRealizationMultiplier: 0.80,
-  
+
+  // Default cost of capital (WACC proxy) for cash flow calculations
+  defaultCostOfCapital: 0.08,  // 8%
+
   // Token pricing (Claude 3.5 Sonnet defaults)
   inputTokenPricePerM: 3.00,
   outputTokenPricePerM: 15.00,
-  
-  // Optional probability of success per use case
-  probabilityOfSuccess: 1.0,
+
+  // Benefits cap: maximum total benefits as % of annual revenue
+  benefitsCapPct: 0.50,  // 50% of annual revenue
+
+  // Risk reduction cap: max reduction vs current exposure
+  riskReductionCapPct: 0.50,  // 50% of current exposure
 };
 
+// ============================================================================
+// DATA MATURITY LEVELS
+// ============================================================================
+export const DATA_MATURITY_LEVELS: Record<number, { label: string; multiplier: number }> = {
+  1: { label: 'Ad-hoc (scattered, no governance)', multiplier: 0.60 },
+  2: { label: 'Repeatable (some processes)', multiplier: 0.75 },
+  3: { label: 'Defined (documented, some automation)', multiplier: 0.85 },
+  4: { label: 'Managed (measured, controlled)', multiplier: 0.95 },
+  5: { label: 'Optimizing (continuous improvement)', multiplier: 1.00 },
+};
+
+export function getDataMaturityMultiplier(level: number): number {
+  const clamped = Math.max(1, Math.min(5, Math.round(level)));
+  return DATA_MATURITY_LEVELS[clamped].multiplier;
+}
+
+// ============================================================================
+// CORE BENEFIT FORMULAS
+// ============================================================================
+
 /**
- * Cost Benefit Calculation (Section 3.2)
- * SPEC FORMULA: CostBenefit = HoursSaved × LoadedRate × Efficiency × Adoption × DataMaturity
- * 
- * @param hoursSaved - Annual hours saved by automation
- * @param loadedHourlyRate - Fully burdened hourly cost (wages + benefits + overhead)
- * @param efficiencyMultiplier - Efficiency gain factor (0-1)
- * @param adoptionMultiplier - Expected user adoption rate (0-1)
- * @param dataMaturityMultiplier - Data readiness factor (0-1)
+ * Cost Benefit Calculation
+ * FORMULA: Hours × Rate × BenefitsLoading × Realization × DataMaturity × ScenarioMultiplier
  */
 export function calculateCostBenefit(inputs: {
   hoursSaved: number;
-  loadedHourlyRate: number;
-  efficiencyMultiplier?: number;
-  adoptionMultiplier?: number;
+  loadedHourlyRate?: number;
+  benefitsLoading?: number;
+  costRealizationMultiplier?: number;
   dataMaturityMultiplier?: number;
+  scenario?: Scenario;
 }): CalculationResult {
   const {
     hoursSaved,
-    loadedHourlyRate,
-    efficiencyMultiplier = DEFAULT_MULTIPLIERS.efficiencyMultiplier,
-    adoptionMultiplier = DEFAULT_MULTIPLIERS.adoptionMultiplier,
+    loadedHourlyRate = DEFAULT_MULTIPLIERS.loadedHourlyRate,
+    benefitsLoading = DEFAULT_MULTIPLIERS.benefitsLoading,
+    costRealizationMultiplier = DEFAULT_MULTIPLIERS.costRealizationMultiplier,
     dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+    scenario = 'conservative',
   } = inputs;
 
-  const rawValue = hoursSaved * loadedHourlyRate * efficiencyMultiplier * adoptionMultiplier * dataMaturityMultiplier;
-  const roundedValue = Math.floor(rawValue / 100000) * 100000; // Round DOWN to nearest $100K
-  
+  const scenarioMultiplier = SCENARIO_MULTIPLIERS[scenario];
+  const rawValue = hoursSaved * loadedHourlyRate * benefitsLoading * costRealizationMultiplier * dataMaturityMultiplier * scenarioMultiplier;
+  const roundedValue = Math.floor(rawValue / ROUNDING.BENEFIT_PRECISION) * ROUNDING.BENEFIT_PRECISION;
+
   return {
     value: roundedValue,
     trace: {
-      formula: 'HoursSaved × LoadedRate × Efficiency × Adoption × DataMaturity',
-      inputs: { hoursSaved, loadedHourlyRate, efficiencyMultiplier, adoptionMultiplier, dataMaturityMultiplier },
+      formula: 'HoursSaved × LoadedRate × BenefitsLoading × Realization × DataMaturity × Scenario',
+      inputs: { hoursSaved, loadedHourlyRate, benefitsLoading, costRealizationMultiplier, dataMaturityMultiplier, scenarioMultiplier },
       intermediates: { rawValue },
       output: rawValue,
     },
@@ -81,13 +221,8 @@ export function calculateCostBenefit(inputs: {
 }
 
 /**
- * Revenue Benefit Calculation (Section 3.2)
- * SPEC FORMULA: RevenueBenefit = UpliftPct × BaselineRevenueAtRisk × MarginPct × Realization × DataMaturity
- * 
- * Examples of BaselineRevenueAtRisk:
- * - Churn-at-risk revenue
- * - Pipeline value
- * - Opportunity cost/day × days reduced
+ * Revenue Benefit Calculation
+ * FORMULA: UpliftPct × BaselineRevenue × Margin × Realization × DataMaturity × Scenario
  */
 export function calculateRevenueBenefit(inputs: {
   upliftPct: number;
@@ -95,6 +230,7 @@ export function calculateRevenueBenefit(inputs: {
   marginPct?: number;
   revenueRealizationMultiplier?: number;
   dataMaturityMultiplier?: number;
+  scenario?: Scenario;
 }): CalculationResult {
   const {
     upliftPct,
@@ -102,16 +238,20 @@ export function calculateRevenueBenefit(inputs: {
     marginPct = 1.0,
     revenueRealizationMultiplier = DEFAULT_MULTIPLIERS.revenueRealizationMultiplier,
     dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+    scenario = 'conservative',
   } = inputs;
 
-  const rawValue = upliftPct * baselineRevenueAtRisk * marginPct * revenueRealizationMultiplier * dataMaturityMultiplier;
-  const roundedValue = Math.floor(rawValue / 100000) * 100000;
-  
+  // Cap uplift at 50% per use case
+  const cappedUplift = Math.min(upliftPct, 0.50);
+  const scenarioMultiplier = SCENARIO_MULTIPLIERS[scenario];
+  const rawValue = cappedUplift * baselineRevenueAtRisk * marginPct * revenueRealizationMultiplier * dataMaturityMultiplier * scenarioMultiplier;
+  const roundedValue = Math.floor(rawValue / ROUNDING.BENEFIT_PRECISION) * ROUNDING.BENEFIT_PRECISION;
+
   return {
     value: roundedValue,
     trace: {
-      formula: 'UpliftPct × BaselineRevenueAtRisk × MarginPct × Realization × DataMaturity',
-      inputs: { upliftPct, baselineRevenueAtRisk, marginPct, revenueRealizationMultiplier, dataMaturityMultiplier },
+      formula: 'UpliftPct × BaselineRevenue × Margin × Realization × DataMaturity × Scenario',
+      inputs: { upliftPct: cappedUplift, baselineRevenueAtRisk, marginPct, revenueRealizationMultiplier, dataMaturityMultiplier, scenarioMultiplier },
       intermediates: { rawValue },
       output: rawValue,
     },
@@ -119,41 +259,62 @@ export function calculateRevenueBenefit(inputs: {
 }
 
 /**
- * Cash Flow Benefit Calculation (Section 3.2)
- * SPEC FORMULA: CashFlowBenefit = DaysImprovement × DailyRevenue × WorkingCapitalPct × Realization × DataMaturity
+ * Cash Flow Benefit Calculation — FIXED
+ *
+ * OLD (WRONG): DaysImprovement × DailyRevenue × Multipliers
+ *   → Treated DSO as direct revenue (inflated 100-200x)
+ *
+ * NEW (CORRECT): AnnualRevenue × (DaysImprovement / 365) × CostOfCapital × Realization × DataMaturity × Scenario
+ *   → Calculates financing cost saved by releasing working capital
+ *
+ * Example: $365M revenue, 15 days DSO improvement, 8% WACC
+ *   Working capital freed = $365M × 15/365 = $15M
+ *   Annual benefit = $15M × 8% = $1.2M (the financing cost saved)
  */
 export function calculateCashFlowBenefit(inputs: {
   daysImprovement: number;
-  dailyRevenue: number;
-  workingCapitalPct?: number;
+  annualRevenue: number;
+  costOfCapital?: number;
   cashFlowRealizationMultiplier?: number;
   dataMaturityMultiplier?: number;
+  scenario?: Scenario;
+  // Legacy support: if dailyRevenue is provided instead of annualRevenue, convert
+  dailyRevenue?: number;
 }): CalculationResult {
   const {
     daysImprovement,
-    dailyRevenue,
-    workingCapitalPct = 1.0,
+    costOfCapital = DEFAULT_MULTIPLIERS.defaultCostOfCapital,
     cashFlowRealizationMultiplier = DEFAULT_MULTIPLIERS.cashFlowRealizationMultiplier,
     dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+    scenario = 'conservative',
   } = inputs;
 
-  const rawValue = daysImprovement * dailyRevenue * workingCapitalPct * cashFlowRealizationMultiplier * dataMaturityMultiplier;
-  const roundedValue = Math.floor(rawValue / 100000) * 100000;
-  
+  // Handle legacy dailyRevenue input by converting to annualRevenue
+  const annualRevenue = inputs.annualRevenue || (inputs.dailyRevenue ? inputs.dailyRevenue * 365 : 0);
+
+  const scenarioMultiplier = SCENARIO_MULTIPLIERS[scenario];
+
+  // CORRECT FORMULA: Working capital released × cost of capital
+  const workingCapitalFreed = annualRevenue * (daysImprovement / 365);
+  const annualFinancingSaved = workingCapitalFreed * costOfCapital;
+  const rawValue = annualFinancingSaved * cashFlowRealizationMultiplier * dataMaturityMultiplier * scenarioMultiplier;
+  const roundedValue = Math.floor(rawValue / ROUNDING.BENEFIT_PRECISION) * ROUNDING.BENEFIT_PRECISION;
+
   return {
     value: roundedValue,
     trace: {
-      formula: 'DaysImprovement × DailyRevenue × WorkingCapitalPct × Realization × DataMaturity',
-      inputs: { daysImprovement, dailyRevenue, workingCapitalPct, cashFlowRealizationMultiplier, dataMaturityMultiplier },
-      intermediates: { rawValue },
+      formula: 'AnnualRevenue × (DaysImprovement / 365) × CostOfCapital × Realization × DataMaturity × Scenario',
+      inputs: { annualRevenue, daysImprovement, costOfCapital, cashFlowRealizationMultiplier, dataMaturityMultiplier, scenarioMultiplier },
+      intermediates: { workingCapitalFreed, annualFinancingSaved, rawValue },
       output: rawValue,
     },
   };
 }
 
 /**
- * Risk Benefit Calculation (Section 3.2)
- * SPEC FORMULA: RiskBenefit = (ProbBefore × ImpactBefore - ProbAfter × ImpactAfter) × Realization × DataMaturity
+ * Risk Benefit Calculation
+ * FORMULA: (ProbBefore × ImpactBefore - ProbAfter × ImpactAfter) × Realization × DataMaturity × Scenario
+ * CAPPED at 50% of current exposure (probBefore × impactBefore)
  */
 export function calculateRiskBenefit(inputs: {
   probBefore: number;
@@ -162,6 +323,7 @@ export function calculateRiskBenefit(inputs: {
   impactAfter: number;
   riskRealizationMultiplier?: number;
   dataMaturityMultiplier?: number;
+  scenario?: Scenario;
 }): CalculationResult {
   const {
     probBefore,
@@ -170,29 +332,296 @@ export function calculateRiskBenefit(inputs: {
     impactAfter,
     riskRealizationMultiplier = DEFAULT_MULTIPLIERS.riskRealizationMultiplier,
     dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+    scenario = 'conservative',
   } = inputs;
 
+  const scenarioMultiplier = SCENARIO_MULTIPLIERS[scenario];
   const riskBefore = probBefore * impactBefore;
   const riskAfter = probAfter * impactAfter;
   const riskReduction = riskBefore - riskAfter;
-  const rawValue = riskReduction * riskRealizationMultiplier * dataMaturityMultiplier;
-  const roundedValue = Math.floor(rawValue / 100000) * 100000;
-  
+
+  // CAP: Risk reduction cannot exceed 50% of current exposure
+  const maxReduction = riskBefore * DEFAULT_MULTIPLIERS.riskReductionCapPct;
+  const cappedReduction = Math.min(riskReduction, maxReduction);
+
+  const rawValue = cappedReduction * riskRealizationMultiplier * dataMaturityMultiplier * scenarioMultiplier;
+  const roundedValue = Math.floor(rawValue / ROUNDING.BENEFIT_PRECISION) * ROUNDING.BENEFIT_PRECISION;
+
   return {
     value: roundedValue,
     trace: {
-      formula: '(ProbBefore × ImpactBefore - ProbAfter × ImpactAfter) × Realization × DataMaturity',
-      inputs: { probBefore, impactBefore, probAfter, impactAfter, riskRealizationMultiplier, dataMaturityMultiplier },
-      intermediates: { riskBefore, riskAfter, riskReduction, rawValue },
+      formula: 'min(RiskReduction, 50% of Exposure) × Realization × DataMaturity × Scenario',
+      inputs: { probBefore, impactBefore, probAfter, impactAfter, riskRealizationMultiplier, dataMaturityMultiplier, scenarioMultiplier },
+      intermediates: { riskBefore, riskAfter, riskReduction, maxReduction, cappedReduction, rawValue },
       output: rawValue,
     },
   };
 }
 
+// ============================================================================
+// AGGREGATION WITH BENEFITS CAP
+// ============================================================================
+
 /**
- * Token Cost Calculation (Section 3.2)
- * SPEC FORMULA: AnnualTokenCost = 12 × ((MonthlyInputTokens/1e6 × InputPrice) + (MonthlyOutputTokens/1e6 × OutputPrice))
+ * Total Annual Value Calculation — WITH REVENUE CAP
+ * FORMULA: min(Sum of all drivers, annualRevenue × benefitsCapPct)
  */
+export function calculateTotalAnnualValue(inputs: {
+  costBenefit: number;
+  revenueBenefit: number;
+  cashFlowBenefit: number;
+  riskBenefit: number;
+  annualRevenue?: number;
+  benefitsCapPct?: number;
+}): CalculationResult & { isCapped: boolean; capAmount: number } {
+  const {
+    costBenefit,
+    revenueBenefit,
+    cashFlowBenefit,
+    riskBenefit,
+    annualRevenue = 0,
+    benefitsCapPct = DEFAULT_MULTIPLIERS.benefitsCapPct,
+  } = inputs;
+
+  const sumBenefits = costBenefit + revenueBenefit + cashFlowBenefit + riskBenefit;
+  const capAmount = annualRevenue > 0 ? annualRevenue * benefitsCapPct : Infinity;
+  const cappedValue = Math.min(sumBenefits, capAmount);
+  const isCapped = sumBenefits > capAmount;
+  const roundedValue = Math.floor(cappedValue / ROUNDING.BENEFIT_PRECISION) * ROUNDING.BENEFIT_PRECISION;
+
+  return {
+    value: roundedValue,
+    isCapped,
+    capAmount: capAmount === Infinity ? 0 : capAmount,
+    trace: {
+      formula: isCapped
+        ? `min(Sum of Drivers, ${(benefitsCapPct * 100).toFixed(0)}% of Revenue) — CAPPED`
+        : 'CostBenefit + RevenueBenefit + CashFlowBenefit + RiskBenefit',
+      inputs: { costBenefit, revenueBenefit, cashFlowBenefit, riskBenefit, annualRevenue, benefitsCapPct },
+      intermediates: { sumBenefits, capAmount: capAmount === Infinity ? 0 : capAmount, isCapped: isCapped ? 1 : 0 },
+      output: cappedValue,
+    },
+  };
+}
+
+// ============================================================================
+// CROSS-USE-CASE VALIDATION (Common Sense Guardrails)
+// ============================================================================
+
+export interface CrossValidationResult {
+  isValid: boolean;
+  warnings: string[];
+  errors: string[];
+  metrics: {
+    totalBenefitsVsRevenue: number;      // ratio
+    totalFTESavingsVsHeadcount: number;  // ratio
+    totalRevenueBenefitVsRevenue: number; // ratio
+    benefitsCapped: boolean;
+    scaleFactor: number;                  // 1.0 if not scaled, <1.0 if capped
+  };
+}
+
+export function crossValidateUseCases(inputs: {
+  useCaseBenefits: Array<{
+    costBenefit: number;
+    revenueBenefit: number;
+    cashFlowBenefit: number;
+    riskBenefit: number;
+    hoursSaved?: number;
+  }>;
+  annualRevenue: number;
+  totalEmployees: number;
+  benefitsCapPct?: number;
+}): CrossValidationResult {
+  const {
+    useCaseBenefits,
+    annualRevenue,
+    totalEmployees,
+    benefitsCapPct = DEFAULT_MULTIPLIERS.benefitsCapPct,
+  } = inputs;
+
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  // Sum all benefits
+  let totalCost = 0, totalRevenue = 0, totalCashFlow = 0, totalRisk = 0, totalHours = 0;
+  for (const uc of useCaseBenefits) {
+    totalCost += uc.costBenefit;
+    totalRevenue += uc.revenueBenefit;
+    totalCashFlow += uc.cashFlowBenefit;
+    totalRisk += uc.riskBenefit;
+    totalHours += uc.hoursSaved || 0;
+  }
+
+  const totalBenefits = totalCost + totalRevenue + totalCashFlow + totalRisk;
+  const benefitsRatio = annualRevenue > 0 ? totalBenefits / annualRevenue : 0;
+  const revenueRatio = annualRevenue > 0 ? totalRevenue / annualRevenue : 0;
+
+  // Check: Total benefits vs revenue
+  if (annualRevenue > 0 && benefitsRatio > benefitsCapPct) {
+    warnings.push(`Total benefits ($${formatMoney(totalBenefits)}) exceed ${(benefitsCapPct * 100).toFixed(0)}% of annual revenue ($${formatMoney(annualRevenue)}). Benefits will be proportionally scaled.`);
+  }
+
+  // Check: Revenue benefits alone shouldn't exceed 30% of total revenue
+  if (annualRevenue > 0 && revenueRatio > 0.30) {
+    warnings.push(`Total revenue benefits ($${formatMoney(totalRevenue)}) exceed 30% of annual revenue. This may indicate double-counting across use cases.`);
+  }
+
+  // Check: FTE savings vs headcount
+  const fteEquivalent = totalHours / 2080; // Standard annual hours per FTE
+  const fteRatio = totalEmployees > 0 ? fteEquivalent / totalEmployees : 0;
+  if (totalEmployees > 0 && fteRatio > 0.20) {
+    warnings.push(`Total hours saved (${totalHours.toLocaleString()}) implies ${fteEquivalent.toFixed(0)} FTE equivalents — more than 20% of ${totalEmployees} employees. Verify for double-counting.`);
+  }
+
+  // Calculate scale factor if capping needed
+  const cap = annualRevenue > 0 ? annualRevenue * benefitsCapPct : Infinity;
+  const scaleFactor = totalBenefits > cap ? cap / totalBenefits : 1.0;
+
+  return {
+    isValid: errors.length === 0,
+    warnings,
+    errors,
+    metrics: {
+      totalBenefitsVsRevenue: benefitsRatio,
+      totalFTESavingsVsHeadcount: fteRatio,
+      totalRevenueBenefitVsRevenue: revenueRatio,
+      benefitsCapped: scaleFactor < 1.0,
+      scaleFactor,
+    },
+  };
+}
+
+// ============================================================================
+// NPV, PAYBACK, AND MULTI-YEAR PROJECTIONS
+// ============================================================================
+
+export interface MultiYearProjection {
+  years: Array<{
+    year: number;
+    adoptionRate: number;
+    grossBenefit: number;
+    adjustedBenefit: number;
+    implementationCost: number;
+    netBenefit: number;
+    cumulativeNetBenefit: number;
+    discountFactor: number;
+    presentValue: number;
+  }>;
+  npv: number;
+  paybackMonths: number;
+  irr: number | null; // null if not calculable
+  totalBenefitOverPeriod: number;
+}
+
+export function calculateMultiYearProjection(inputs: {
+  annualBenefit: number;          // First-year annual benefit at full adoption
+  implementationCost: number;     // Total implementation cost
+  discountRate?: number;          // WACC / discount rate (default 10%)
+  scenario?: Scenario;
+  years?: number;                 // Projection period (default 5)
+}): MultiYearProjection {
+  const {
+    annualBenefit,
+    implementationCost,
+    discountRate = 0.10,
+    scenario = 'conservative',
+    years = 5,
+  } = inputs;
+
+  const adoption = ADOPTION_CURVES[scenario];
+  const projectionYears: MultiYearProjection['years'] = [];
+  let cumulativeNet = 0;
+  let totalPV = 0;
+  let paybackMonths = -1;
+  let totalBenefit = 0;
+
+  for (let y = 1; y <= years; y++) {
+    // Adoption rate: Y1, Y2, Y3+
+    const adoptionRate = y === 1 ? adoption.y1 : y === 2 ? adoption.y2 : adoption.y3;
+    const grossBenefit = annualBenefit;
+    const adjustedBenefit = grossBenefit * adoptionRate;
+
+    // Implementation cost spread: 60% Y1, 30% Y2, 10% Y3
+    const implCostThisYear = y === 1 ? implementationCost * 0.60
+      : y === 2 ? implementationCost * 0.30
+      : y === 3 ? implementationCost * 0.10
+      : 0;
+
+    const netBenefit = adjustedBenefit - implCostThisYear;
+    cumulativeNet += netBenefit;
+    totalBenefit += adjustedBenefit;
+
+    const discountFactor = 1 / Math.pow(1 + discountRate, y);
+    const pv = netBenefit * discountFactor;
+    totalPV += pv;
+
+    // Calculate payback: find month within year where cumulative goes positive
+    if (paybackMonths < 0 && cumulativeNet >= 0) {
+      const prevCumulative = cumulativeNet - netBenefit;
+      if (prevCumulative < 0 && netBenefit > 0) {
+        const monthsIntoYear = Math.ceil((-prevCumulative / netBenefit) * 12);
+        paybackMonths = (y - 1) * 12 + monthsIntoYear;
+      } else {
+        paybackMonths = (y - 1) * 12;
+      }
+    }
+
+    projectionYears.push({
+      year: y,
+      adoptionRate,
+      grossBenefit,
+      adjustedBenefit,
+      implementationCost: implCostThisYear,
+      netBenefit,
+      cumulativeNetBenefit: cumulativeNet,
+      discountFactor,
+      presentValue: pv,
+    });
+  }
+
+  // Simple IRR approximation using bisection method
+  let irr: number | null = null;
+  try {
+    const cashFlows = [-implementationCost];
+    for (const yr of projectionYears) {
+      cashFlows.push(yr.adjustedBenefit - (yr.year <= 3 ? yr.implementationCost : 0));
+    }
+    irr = calculateIRR(cashFlows);
+  } catch {
+    irr = null;
+  }
+
+  return {
+    years: projectionYears,
+    npv: Math.round(totalPV),
+    paybackMonths: paybackMonths >= 0 ? paybackMonths : years * 12,
+    irr,
+    totalBenefitOverPeriod: totalBenefit,
+  };
+}
+
+function calculateIRR(cashFlows: number[], guess: number = 0.10, maxIterations: number = 100, tolerance: number = 0.0001): number | null {
+  let rate = guess;
+  for (let i = 0; i < maxIterations; i++) {
+    let npv = 0;
+    let dnpv = 0;
+    for (let t = 0; t < cashFlows.length; t++) {
+      const factor = Math.pow(1 + rate, t);
+      npv += cashFlows[t] / factor;
+      dnpv -= t * cashFlows[t] / (factor * (1 + rate));
+    }
+    if (Math.abs(npv) < tolerance) return rate;
+    if (dnpv === 0) return null;
+    rate = rate - npv / dnpv;
+  }
+  return Math.abs(rate) < 10 ? rate : null; // Reject unreasonable rates
+}
+
+// ============================================================================
+// TOKEN COST CALCULATION
+// ============================================================================
+
 export function calculateTokenCost(inputs: {
   runsPerMonth: number;
   inputTokensPerRun: number;
@@ -214,7 +643,7 @@ export function calculateTokenCost(inputs: {
   const monthlyInputCost = (monthlyInputTokens / 1_000_000) * inputTokenPricePerM;
   const monthlyOutputCost = (monthlyOutputTokens / 1_000_000) * outputTokenPricePerM;
   const annualCost = 12 * (monthlyInputCost + monthlyOutputCost);
-  
+
   return {
     value: Math.round(annualCost * 100) / 100,
     trace: {
@@ -226,56 +655,14 @@ export function calculateTokenCost(inputs: {
   };
 }
 
-/**
- * Total Annual Value Calculation (Section 3.2)
- * FORMULA: TotalAnnualValue = CostBenefit + RevenueBenefit + CashFlowBenefit + RiskBenefit
- * Note: Each driver already has realization multipliers applied, so we don't apply probability again
- */
-export function calculateTotalAnnualValue(inputs: {
-  costBenefit: number;
-  revenueBenefit: number;
-  cashFlowBenefit: number;
-  riskBenefit: number;
-  probabilityOfSuccess?: number;
-}): CalculationResult {
-  const {
-    costBenefit,
-    revenueBenefit,
-    cashFlowBenefit,
-    riskBenefit,
-    // Note: probabilityOfSuccess is kept for interface compatibility but NOT applied
-    // Each driver benefit already has realization multipliers applied
-  } = inputs;
-
-  // Total Annual Value is the simple sum of all four driver benefits
-  // DO NOT apply probability again - each driver already has realization adjustments
-  const sumBenefits = costBenefit + revenueBenefit + cashFlowBenefit + riskBenefit;
-  const roundedValue = Math.floor(sumBenefits / 100000) * 100000;
-  
-  return {
-    value: roundedValue,
-    trace: {
-      formula: 'CostBenefit + RevenueBenefit + CashFlowBenefit + RiskBenefit',
-      inputs: { costBenefit, revenueBenefit, cashFlowBenefit, riskBenefit },
-      intermediates: { sumBenefits },
-      output: sumBenefits,
-    },
-  };
-}
-
-/**
- * Value per Million Tokens
- * SPEC FORMULA: ValuePerMillionTokens = TotalAnnualValue / (TotalMonthlyTokens / 1M)
- */
 export function calculateValuePerMillionTokens(inputs: {
   totalAnnualValue: number;
   totalMonthlyTokens: number;
 }): CalculationResult {
   const { totalAnnualValue, totalMonthlyTokens } = inputs;
-  
   const millionTokens = totalMonthlyTokens / 1_000_000;
   const value = millionTokens > 0 ? totalAnnualValue / millionTokens : 0;
-  
+
   return {
     value: Math.round(value),
     trace: {
@@ -287,102 +674,105 @@ export function calculateValuePerMillionTokens(inputs: {
   };
 }
 
+// ============================================================================
+// PRIORITY SCORING — 5-CRITERION MATRIX (BlueAlly Standard)
+// ============================================================================
+
 /**
- * Priority Score Calculation (Section 3.2)
- * 
- * SCORING COMPONENTS (all normalized to 0-100):
- * - ValueScore: Linear scale where $10M+ = 100
- * - TTVScore: 3 months = 100, 12+ months = 0 (linear interpolation)
- * - EffortScore: Based on data readiness (higher = easier), integration complexity (lower = easier), change mgmt (lower = easier)
- * 
- * FINAL FORMULA: PriorityScore = 0.4 × ValueScore + 0.3 × TTVScore + 0.3 × EffortScore
- * Result range: 0-100
- * 
- * TIER THRESHOLDS:
- * - Critical: >= 80
- * - High: >= 60
- * - Medium: >= 40
- * - Low: < 40
- * 
- * INPUT DIRECTIONS:
- * - dataReadiness: 1-5 where 5 = HIGH readiness = EASY (better)
- * - integrationComplexity: 1-5 where 5 = HIGH complexity = HARD (worse)
- * - changeMgmt: 1-5 where 5 = HIGH change management = HARD (worse)
+ * Priority Score Calculation — 5-Criterion Matrix
+ *
+ * WEIGHTS:
+ *   Strategic Alignment: 25%
+ *   Financial Impact: 25%
+ *   Implementation Complexity: 20% (inverse — lower complexity = higher score)
+ *   Data Readiness: 15%
+ *   Time to Value: 15%
+ *
+ * Result: 0-100 score
  */
 export function calculatePriorityScore(inputs: {
   totalAnnualValue: number;
   timeToValueMonths: number;
-  dataReadiness: number; // 1-5, where 5 = easy/ready
+  dataReadiness: number;       // 1-5, where 5 = easy/ready
   integrationComplexity: number; // 1-5, where 5 = hard
-  changeMgmt: number; // 1-5, where 5 = hard
-}): CalculationResult & { 
-  valueScore: number; 
-  ttvScore: number; 
-  effortScore: number;
+  changeMgmt: number;          // 1-5, where 5 = hard
+  strategicAlignment?: number;  // 1-5, where 5 = highly aligned (default 3)
+}): CalculationResult & {
+  strategicScore: number;
+  financialScore: number;
+  complexityScore: number;
+  dataReadinessScore: number;
+  ttvScore: number;
 } {
-  const { totalAnnualValue, timeToValueMonths, dataReadiness, integrationComplexity, changeMgmt } = inputs;
+  const {
+    totalAnnualValue,
+    timeToValueMonths,
+    dataReadiness,
+    integrationComplexity,
+    changeMgmt,
+    strategicAlignment = 3,
+  } = inputs;
 
-  // Value Score (0-100): $10M+ = 100, linear scale below
-  const valueScore = Math.min(100, Math.round((totalAnnualValue / 10_000_000) * 100));
-  
-  // TTV Score (0-100): 3 months = 100, 12+ months = 0, linear interpolation
+  // Strategic Alignment Score (0-100): 1-5 scale → 0-100
+  const strategicScore = Math.min(100, Math.round(((strategicAlignment - 1) / 4) * 100));
+
+  // Financial Impact Score (0-100): $10M+ = 100, linear below
+  const financialScore = Math.min(100, Math.round((totalAnnualValue / 10_000_000) * 100));
+
+  // Implementation Complexity Score (0-100): Lower complexity = higher score
+  // Combine integration complexity and change management (both 1-5 where 5=hard)
+  const avgComplexity = (integrationComplexity + changeMgmt) / 2;
+  const complexityScore = Math.round(((5 - avgComplexity) / 4) * 100);
+
+  // Data Readiness Score (0-100): 1-5 scale → 0-100
+  const dataReadinessScore = Math.round(((dataReadiness - 1) / 4) * 100);
+
+  // TTV Score (0-100): 3 months = 100, 18+ months = 0
   let ttvScore: number;
-  if (timeToValueMonths <= 3) {
+  if (timeToValueMonths <= TTV_THRESHOLDS.PERFECT_MONTHS) {
     ttvScore = 100;
-  } else if (timeToValueMonths >= 12) {
+  } else if (timeToValueMonths >= TTV_THRESHOLDS.ZERO_MONTHS) {
     ttvScore = 0;
   } else {
-    // Linear interpolation: score decreases by 100/9 per month from month 3 to 12
-    ttvScore = Math.round(100 - ((timeToValueMonths - 3) / 9) * 100);
+    const range = TTV_THRESHOLDS.ZERO_MONTHS - TTV_THRESHOLDS.PERFECT_MONTHS;
+    ttvScore = Math.round(100 - ((timeToValueMonths - TTV_THRESHOLDS.PERFECT_MONTHS) / range) * 100);
   }
-  
-  // Effort Score (0-100): Lower effort = higher score
-  // Convert factors to "ease" scores (0-100 each):
-  // - dataReadiness: 5 = easy, so easeFromData = (dataReadiness - 1) / 4 * 100
-  // - integrationComplexity: 1 = easy (low complexity), so easeFromIntegration = (5 - integrationComplexity) / 4 * 100
-  // - changeMgmt: 1 = easy (low change), so easeFromChange = (5 - changeMgmt) / 4 * 100
-  const easeFromData = ((dataReadiness - 1) / 4) * 100;
-  const easeFromIntegration = ((5 - integrationComplexity) / 4) * 100;
-  const easeFromChange = ((5 - changeMgmt) / 4) * 100;
-  const effortScore = Math.round((easeFromData + easeFromIntegration + easeFromChange) / 3);
-  
-  // Priority Score: weighted average, result is 0-100
-  const priorityScore = Math.round(0.4 * valueScore + 0.3 * ttvScore + 0.3 * effortScore);
-  
+
+  // Weighted composite
+  const priorityScore = Math.round(
+    PRIORITY_WEIGHTS.strategicAlignment * strategicScore +
+    PRIORITY_WEIGHTS.financialImpact * financialScore +
+    PRIORITY_WEIGHTS.implementationComplexity * complexityScore +
+    PRIORITY_WEIGHTS.dataReadiness * dataReadinessScore +
+    PRIORITY_WEIGHTS.timeToValue * ttvScore
+  );
+
   return {
-    value: priorityScore,
-    valueScore,
+    value: Math.min(100, priorityScore),
+    strategicScore,
+    financialScore,
+    complexityScore,
+    dataReadinessScore,
     ttvScore,
-    effortScore,
     trace: {
-      formula: '0.4 × ValueScore + 0.3 × TTVScore + 0.3 × EffortScore',
-      inputs: { totalAnnualValue, timeToValueMonths, dataReadiness, integrationComplexity, changeMgmt },
-      intermediates: { 
-        valueScore, 
-        ttvScore, 
-        effortScore, 
-        easeFromData, 
-        easeFromIntegration, 
-        easeFromChange 
-      },
+      formula: `Strategic(${(PRIORITY_WEIGHTS.strategicAlignment * 100).toFixed(0)}%) + Financial(${(PRIORITY_WEIGHTS.financialImpact * 100).toFixed(0)}%) + Complexity(${(PRIORITY_WEIGHTS.implementationComplexity * 100).toFixed(0)}%) + DataReady(${(PRIORITY_WEIGHTS.dataReadiness * 100).toFixed(0)}%) + TTV(${(PRIORITY_WEIGHTS.timeToValue * 100).toFixed(0)}%)`,
+      inputs: { totalAnnualValue, timeToValueMonths, dataReadiness, integrationComplexity, changeMgmt, strategicAlignment },
+      intermediates: { strategicScore, financialScore, complexityScore, dataReadinessScore, ttvScore },
       output: priorityScore,
     },
   };
 }
 
 /**
- * Priority Tier Assignment (matches 0-100 scale)
+ * Priority Tier Assignment — 4-tier system
  */
-export function getPriorityTier(priorityScore: number): 'Critical' | 'High' | 'Medium' | 'Low' {
-  if (priorityScore >= 80) return 'Critical';
-  if (priorityScore >= 60) return 'High';
-  if (priorityScore >= 40) return 'Medium';
-  return 'Low';
+export function getPriorityTier(priorityScore: number): string {
+  if (priorityScore >= PRIORITY_TIERS.TIER_1.min) return PRIORITY_TIERS.TIER_1.label;
+  if (priorityScore >= PRIORITY_TIERS.TIER_2.min) return PRIORITY_TIERS.TIER_2.label;
+  if (priorityScore >= PRIORITY_TIERS.TIER_3.min) return PRIORITY_TIERS.TIER_3.label;
+  return PRIORITY_TIERS.TIER_4.label;
 }
 
-/**
- * Recommended Phase Assignment
- */
 export function getRecommendedPhase(priorityScore: number, timeToValueMonths: number): string {
   if (priorityScore >= 80 && timeToValueMonths <= 6) return 'Q1';
   if (priorityScore >= 60 && timeToValueMonths <= 9) return 'Q2';
@@ -390,64 +780,16 @@ export function getRecommendedPhase(priorityScore: number, timeToValueMonths: nu
   return 'Q4';
 }
 
-// Money formatter utility
-export function formatMoney(value: number): string {
-  // Round to whole numbers for readability (except percentages)
-  const rounded = Math.round(value);
-  
-  if (rounded >= 1_000_000_000) {
-    const billions = rounded / 1_000_000_000;
-    // Use whole numbers: $1B, $2B, etc. For fractions, show $1.5B only if needed
-    return billions === Math.floor(billions) 
-      ? `$${Math.floor(billions)}B`
-      : `$${billions.toFixed(1)}B`;
-  }
-  if (rounded >= 1_000_000) {
-    const millions = rounded / 1_000_000;
-    // Use whole numbers for clean millions, otherwise 1 decimal
-    return millions === Math.floor(millions)
-      ? `$${Math.floor(millions)}M`
-      : `$${millions.toFixed(1)}M`;
-  }
-  if (rounded >= 1_000) {
-    return `$${Math.round(rounded / 1_000)}K`;
-  }
-  return `$${rounded}`;
-}
+// ============================================================================
+// FRICTION COST — WITH BENEFIT LINKING
+// ============================================================================
 
-// Percentage formatter utility
-export function formatPercentage(value: number, decimals: number = 0): string {
-  return `${(value * 100).toFixed(decimals)}%`;
-}
-
-// Round timeline UP to nearest month
-export function roundTimelineUp(months: number): number {
-  return Math.ceil(months);
-}
-
-// Round benefits DOWN to nearest $100K
-export function roundBenefitDown(value: number): number {
-  return Math.floor(value / 100000) * 100000;
-}
-
-/**
- * Friction Point Cost Calculation
- * SPEC FORMULA: FrictionCost = AnnualHours × LoadedHourlyRate
- * 
- * This calculates the annual cost burden of a friction point based on
- * the hours spent dealing with it and the fully-loaded labor rate.
- * 
- * @param annualHours - Hours spent annually on this friction point
- * @param loadedHourlyRate - Fully burdened hourly cost (wages + benefits + overhead)
- * @param headcount - Number of FTEs affected (optional, for alternative calculation)
- * @param hoursPerFTE - Annual hours per FTE (default 2080 = 40hr/week × 52 weeks)
- */
 export function calculateFrictionCost(inputs: {
   annualHours?: number;
   loadedHourlyRate: number;
   headcount?: number;
   hoursPerFTE?: number;
-  frictionPercentage?: number; // Percentage of time spent on friction (0-1)
+  frictionPercentage?: number;
 }): CalculationResult {
   const {
     annualHours,
@@ -461,30 +803,30 @@ export function calculateFrictionCost(inputs: {
   let formulaDescription: string;
 
   if (annualHours !== undefined && annualHours > 0) {
-    // Direct hours input
     calculatedHours = annualHours;
     formulaDescription = 'AnnualHours × LoadedHourlyRate';
   } else if (headcount !== undefined && frictionPercentage !== undefined) {
-    // Calculate from headcount and friction percentage
     calculatedHours = headcount * hoursPerFTE * frictionPercentage;
     formulaDescription = 'Headcount × HoursPerFTE × FrictionPercentage × LoadedHourlyRate';
   } else if (headcount !== undefined) {
-    // Headcount only - assume full FTE hours
     calculatedHours = headcount * hoursPerFTE;
     formulaDescription = 'Headcount × HoursPerFTE × LoadedHourlyRate';
   } else {
     return {
       value: 0,
       trace: {
-        formula: 'Unable to calculate - missing hours or headcount',
-        inputs: { annualHours: annualHours || 0, loadedHourlyRate, headcount: headcount || 0, hoursPerFTE, frictionPercentage: frictionPercentage || 0 },
+        formula: 'Unable to calculate — missing hours or headcount',
+        inputs: { annualHours: annualHours || 0, loadedHourlyRate },
         output: 0,
       },
     };
   }
 
+  // Validate hours within bounds
+  calculatedHours = Math.min(calculatedHours, INPUT_BOUNDS.annualHours.max);
+
   const rawValue = calculatedHours * loadedHourlyRate;
-  const roundedValue = Math.floor(rawValue / 10000) * 10000; // Round DOWN to nearest $10K for friction costs
+  const roundedValue = Math.floor(rawValue / ROUNDING.FRICTION_PRECISION) * ROUNDING.FRICTION_PRECISION;
 
   return {
     value: roundedValue,
@@ -497,16 +839,6 @@ export function calculateFrictionCost(inputs: {
   };
 }
 
-/**
- * Friction Point Severity Score Calculation
- * Determines severity based on annual cost and strategic impact
- * 
- * SCORING:
- * - Critical: >= $5M annual cost OR affects revenue/compliance directly
- * - High: >= $1M annual cost
- * - Medium: >= $250K annual cost
- * - Low: < $250K annual cost
- */
 export function calculateFrictionSeverity(inputs: {
   annualCost: number;
   affectsRevenue?: boolean;
@@ -515,39 +847,109 @@ export function calculateFrictionSeverity(inputs: {
 }): 'Critical' | 'High' | 'Medium' | 'Low' {
   const { annualCost, affectsRevenue, affectsCompliance, affectsCustomer } = inputs;
 
-  // Critical if affects revenue/compliance or very high cost
-  if (affectsRevenue || affectsCompliance || annualCost >= 5_000_000) {
-    return 'Critical';
-  }
-  
-  // High if significant cost or customer-facing
-  if (annualCost >= 1_000_000 || affectsCustomer) {
-    return 'High';
-  }
-  
-  // Medium for moderate costs
-  if (annualCost >= 250_000) {
-    return 'Medium';
-  }
-  
+  if (affectsRevenue || affectsCompliance || annualCost >= 5_000_000) return 'Critical';
+  if (annualCost >= 1_000_000 || affectsCustomer) return 'High';
+  if (annualCost >= 250_000) return 'Medium';
   return 'Low';
 }
 
 /**
- * Format hours with appropriate suffix
+ * Link a friction point to a use case benefit, showing recovery percentage
  */
+export function calculateFrictionRecovery(frictionCost: number, useCaseBenefit: number): {
+  recoveryAmount: number;
+  recoveryPct: number;
+  label: string;
+} {
+  if (frictionCost <= 0) return { recoveryAmount: 0, recoveryPct: 0, label: 'No friction link' };
+  const recoveryAmount = Math.min(useCaseBenefit, frictionCost);
+  const recoveryPct = recoveryAmount / frictionCost;
+  return {
+    recoveryAmount,
+    recoveryPct,
+    label: `Recovers ${formatMoney(recoveryAmount)} (${(recoveryPct * 100).toFixed(0)}%) of ${formatMoney(frictionCost)} friction burden`,
+  };
+}
+
+// ============================================================================
+// THREE-SCENARIO SUMMARY GENERATOR
+// ============================================================================
+
+export interface ThreeScenarioSummary {
+  conservative: { totalBenefit: number; npv: number; paybackMonths: number };
+  moderate:     { totalBenefit: number; npv: number; paybackMonths: number };
+  aggressive:   { totalBenefit: number; npv: number; paybackMonths: number };
+  headline: string; // Always uses conservative for executive-facing number
+}
+
+export function generateThreeScenarioSummary(inputs: {
+  baseBenefitAtFullAdoption: number; // The "moderate" (1.0x) annual benefit
+  implementationCost: number;
+  discountRate?: number;
+}): ThreeScenarioSummary {
+  const { baseBenefitAtFullAdoption, implementationCost, discountRate = 0.10 } = inputs;
+
+  const scenarios: Record<Scenario, { totalBenefit: number; npv: number; paybackMonths: number }> = {} as any;
+
+  for (const scenario of ['conservative', 'moderate', 'aggressive'] as Scenario[]) {
+    const adjusted = baseBenefitAtFullAdoption * SCENARIO_MULTIPLIERS[scenario];
+    const projection = calculateMultiYearProjection({
+      annualBenefit: adjusted,
+      implementationCost,
+      discountRate,
+      scenario,
+    });
+    scenarios[scenario] = {
+      totalBenefit: adjusted,
+      npv: projection.npv,
+      paybackMonths: projection.paybackMonths,
+    };
+  }
+
+  return {
+    ...scenarios,
+    headline: `${formatMoney(scenarios.conservative.totalBenefit)} conservative first-year value (${formatMoney(scenarios.moderate.totalBenefit)} moderate, ${formatMoney(scenarios.aggressive.totalBenefit)} aggressive)`,
+  };
+}
+
+// ============================================================================
+// FORMATTERS
+// ============================================================================
+
+export function formatMoney(value: number): string {
+  const rounded = Math.round(value);
+  if (rounded >= 1_000_000_000) {
+    const b = rounded / 1_000_000_000;
+    return b === Math.floor(b) ? `$${Math.floor(b)}B` : `$${b.toFixed(1)}B`;
+  }
+  if (rounded >= 1_000_000) {
+    const m = rounded / 1_000_000;
+    return m === Math.floor(m) ? `$${Math.floor(m)}M` : `$${m.toFixed(1)}M`;
+  }
+  if (rounded >= 1_000) {
+    return `$${Math.round(rounded / 1_000)}K`;
+  }
+  return `$${rounded}`;
+}
+
+export function formatPercentage(value: number, decimals: number = 0): string {
+  return `${(value * 100).toFixed(decimals)}%`;
+}
+
+export function roundTimelineUp(months: number): number {
+  return Math.ceil(months);
+}
+
+export function roundBenefitDown(value: number): number {
+  return Math.floor(value / ROUNDING.BENEFIT_PRECISION) * ROUNDING.BENEFIT_PRECISION;
+}
+
 export function formatHours(hours: number, includeLabel: boolean = true): string {
   const suffix = includeLabel ? ' hours' : '';
-  
-  // Always round to whole number for all hours
   const rounded = Math.round(hours);
-  
   if (rounded >= 1000000) {
-    const millions = Math.round(rounded / 1000000 * 10) / 10;
-    return millions === Math.floor(millions) 
-      ? `${Math.floor(millions).toLocaleString()}M${suffix}`
-      : `${millions.toFixed(1)}M${suffix}`;
+    const m = Math.round(rounded / 1000000 * 10) / 10;
+    return m === Math.floor(m) ? `${Math.floor(m).toLocaleString()}M${suffix}` : `${m.toFixed(1)}M${suffix}`;
   }
-  
   return `${rounded.toLocaleString()}${suffix}`;
 }

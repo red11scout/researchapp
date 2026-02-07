@@ -16,8 +16,17 @@ import {
   formatHours,
   calculateFrictionCost,
   calculateFrictionSeverity,
+  crossValidateUseCases,
+  calculateFrictionRecovery,
+  generateThreeScenarioSummary,
+  calculateMultiYearProjection,
   DEFAULT_MULTIPLIERS,
 } from "../src/calc/formulas";
+
+interface Step0Record {
+  "Annual Revenue ($)"?: string;
+  "Total Employees"?: number | string;
+}
 
 interface Step3Record {
   Function: string;
@@ -29,6 +38,13 @@ interface Step3Record {
   "Annual Hours"?: number | string;
   "Hourly Rate"?: number | string;
   "Cost Formula"?: string;
+  "Target Friction"?: string; // Link to Step 4
+}
+
+interface Step4Record {
+  ID: string;
+  "Use Case": string;
+  "Target Friction"?: string;
 }
 
 interface Step5Record {
@@ -76,9 +92,9 @@ interface Step7Record {
 function parseNumber(str: string | number | undefined): number {
   if (typeof str === "number") return str;
   if (!str) return 0;
-  
+
   const cleaned = str.replace(/[$,]/g, "").trim();
-  
+
   if (cleaned.endsWith("M")) {
     return parseFloat(cleaned.slice(0, -1)) * 1_000_000;
   }
@@ -88,7 +104,7 @@ function parseNumber(str: string | number | undefined): number {
   if (cleaned.endsWith("B")) {
     return parseFloat(cleaned.slice(0, -1)) * 1_000_000_000;
   }
-  
+
   return parseFloat(cleaned) || 0;
 }
 
@@ -110,18 +126,18 @@ function isNoValue(formula: string | undefined): boolean {
 // Extract numbers from a formula string, taking ONLY the left side of =
 function extractInputNumbers(formula: string): number[] {
   if (!formula || isNoValue(formula)) return [];
-  
+
   // Take only the left side of = (the inputs, not the AI's calculated result)
   const formulaPart = formula.split("=")[0] || formula;
-  
+
   const numbers: number[] = [];
-  
+
   // Match patterns: 23,000 or 23000 or 100 or 0.85 or 15% or $100 or $2.1M
   const patterns = formulaPart.match(/[\d,]+\.?\d*[%MKB]?|\d+\.?\d*[%MKB]?/g) || [];
-  
+
   for (const match of patterns) {
     let value = parseFloat(match.replace(/,/g, ""));
-    
+
     if (match.endsWith("%")) {
       value = parseFloat(match.slice(0, -1)) / 100;
     } else if (match.endsWith("M")) {
@@ -131,12 +147,12 @@ function extractInputNumbers(formula: string): number[] {
     } else if (match.endsWith("B")) {
       value = parseFloat(match.slice(0, -1)) * 1_000_000_000;
     }
-    
+
     if (!isNaN(value) && value > 0) {
       numbers.push(value);
     }
   }
-  
+
   return numbers;
 }
 
@@ -152,17 +168,17 @@ interface CostInputs {
 function parseCostFormulaInputs(formula: string): CostInputs | null {
   const numbers = extractInputNumbers(formula);
   if (numbers.length < 2) return null;
-  
+
   // Default multipliers from spec
   let hoursSaved = 0;
   let loadedHourlyRate = DEFAULT_MULTIPLIERS.loadedHourlyRate;
-  let efficiencyMultiplier = DEFAULT_MULTIPLIERS.efficiencyMultiplier;
-  let adoptionMultiplier = DEFAULT_MULTIPLIERS.adoptionMultiplier;
+  let efficiencyMultiplier = DEFAULT_MULTIPLIERS.costRealizationMultiplier;
+  let adoptionMultiplier = DEFAULT_MULTIPLIERS.costRealizationMultiplier;
   let dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier;
-  
+
   const decimals: number[] = [];
   const largeNumbers: number[] = [];
-  
+
   for (const num of numbers) {
     if (num > 0 && num <= 1) {
       decimals.push(num);
@@ -173,21 +189,21 @@ function parseCostFormulaInputs(formula: string): CostInputs | null {
       loadedHourlyRate = num;
     }
   }
-  
+
   // First large number is typically hours saved
   if (largeNumbers.length > 0) {
     hoursSaved = largeNumbers[0];
   }
-  
+
   // Assign decimals to multipliers in order (efficiency, realization/adoption, data maturity)
   // The formula shows: hours × rate × savings% × 0.90 × 0.75
   // Where savings% is the efficiency, 0.90 is cost realization, 0.75 is data maturity
   if (decimals.length >= 1) efficiencyMultiplier = decimals[0];
   if (decimals.length >= 2) adoptionMultiplier = decimals[1]; // This is actually cost realization (0.90)
   if (decimals.length >= 3) dataMaturityMultiplier = decimals[2];
-  
+
   if (hoursSaved === 0) return null;
-  
+
   return {
     hoursSaved,
     loadedHourlyRate,
@@ -202,26 +218,26 @@ function recalculateCostBenefit(formula: string): { value: number; formulaText: 
   if (isNoValue(formula)) {
     return { value: 0, formulaText: "No direct cost reduction" };
   }
-  
+
   const inputs = parseCostFormulaInputs(formula);
-  
+
   if (!inputs) {
     console.log(`[recalculateCostBenefit] Could not parse inputs from: ${formula}`);
     return { value: 0, formulaText: formula };
   }
-  
+
   // Use the deterministic formula function
   const result = calculateCostBenefit({
     hoursSaved: inputs.hoursSaved,
     loadedHourlyRate: inputs.loadedHourlyRate,
-    efficiencyMultiplier: inputs.efficiencyMultiplier,
-    adoptionMultiplier: inputs.adoptionMultiplier,
+    benefitsLoading: DEFAULT_MULTIPLIERS.benefitsLoading,
+    costRealizationMultiplier: inputs.adoptionMultiplier,
     dataMaturityMultiplier: inputs.dataMaturityMultiplier,
   });
-  
-  // Generate formula text with correct result (hours formatted to max 2 decimals)
-  const newFormula = `${formatHours(inputs.hoursSaved)} × $${inputs.loadedHourlyRate}/hr × ${inputs.efficiencyMultiplier.toFixed(2)} × ${inputs.adoptionMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
-  
+
+  // Generate formula text with correct result - includes BenefitsLoading (1.35)
+  const newFormula = `${formatHours(inputs.hoursSaved)} × $${inputs.loadedHourlyRate}/hr × 1.35 × ${inputs.adoptionMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
+
   return { value: result.value, formulaText: newFormula };
 }
 
@@ -237,16 +253,16 @@ interface RevenueInputs {
 function parseRevenueFormulaInputs(formula: string): RevenueInputs | null {
   const numbers = extractInputNumbers(formula);
   if (numbers.length < 2) return null;
-  
+
   let upliftPct = 0;
   let baselineRevenueAtRisk = 0;
   let marginPct = 1.0;
   let revenueRealizationMultiplier = DEFAULT_MULTIPLIERS.revenueRealizationMultiplier;
   let dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier;
-  
+
   const decimals: number[] = [];
   const largeNumbers: number[] = [];
-  
+
   for (const num of numbers) {
     if (num > 0 && num < 1) {
       decimals.push(num);
@@ -254,18 +270,18 @@ function parseRevenueFormulaInputs(formula: string): RevenueInputs | null {
       largeNumbers.push(num);
     }
   }
-  
+
   // First decimal is likely the uplift percentage
   if (decimals.length >= 1) upliftPct = decimals[0];
   // Remaining decimals are multipliers
   if (decimals.length >= 2) revenueRealizationMultiplier = decimals[1];
   if (decimals.length >= 3) dataMaturityMultiplier = decimals[2];
-  
+
   // Large number is the baseline revenue at risk
   if (largeNumbers.length > 0) baselineRevenueAtRisk = largeNumbers[0];
-  
+
   if (upliftPct === 0 || baselineRevenueAtRisk === 0) return null;
-  
+
   return {
     upliftPct,
     baselineRevenueAtRisk,
@@ -279,27 +295,27 @@ function recalculateRevenueBenefit(formula: string): { value: number; formulaTex
   if (isNoValue(formula)) {
     return { value: 0, formulaText: "No direct revenue impact" };
   }
-  
+
   const inputs = parseRevenueFormulaInputs(formula);
-  
+
   if (!inputs) {
     // Cannot parse - log warning and return 0 to avoid incorrect values
     console.warn(`[recalculateRevenueBenefit] Could not parse formula, returning 0: ${formula}`);
     return { value: 0, formulaText: formula + " (could not validate)" };
   }
-  
+
   const result = calculateRevenueBenefit(inputs);
-  
+
   const newFormula = `${(inputs.upliftPct * 100).toFixed(0)}% × ${formatMoney(inputs.baselineRevenueAtRisk)} × ${inputs.revenueRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
-  
+
   return { value: result.value, formulaText: newFormula };
 }
 
 // Parse cash flow formula inputs
 interface CashFlowInputs {
   daysImprovement: number;
-  dailyRevenue: number;
-  workingCapitalPct: number;
+  annualRevenue: number;
+  costOfCapital: number;
   cashFlowRealizationMultiplier: number;
   dataMaturityMultiplier: number;
 }
@@ -307,17 +323,17 @@ interface CashFlowInputs {
 function parseCashFlowFormulaInputs(formula: string): CashFlowInputs | null {
   const numbers = extractInputNumbers(formula);
   if (numbers.length < 2) return null;
-  
+
   let daysImprovement = 0;
-  let dailyRevenue = 0;
-  let workingCapitalPct = 1.0;
+  let annualRevenue = 0;
+  let costOfCapital = DEFAULT_MULTIPLIERS.defaultCostOfCapital;
   let cashFlowRealizationMultiplier = DEFAULT_MULTIPLIERS.cashFlowRealizationMultiplier;
   let dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier;
-  
+
   const decimals: number[] = [];
   const smallNumbers: number[] = [];
   const largeNumbers: number[] = [];
-  
+
   for (const num of numbers) {
     if (num > 0 && num < 1) {
       decimals.push(num);
@@ -327,21 +343,22 @@ function parseCashFlowFormulaInputs(formula: string): CashFlowInputs | null {
       largeNumbers.push(num);
     }
   }
-  
+
   // First small number is days improvement
   if (smallNumbers.length > 0) daysImprovement = smallNumbers[0];
-  // Large number is daily revenue or total
-  if (largeNumbers.length > 0) dailyRevenue = largeNumbers[0];
+  // Large number is annual revenue
+  if (largeNumbers.length > 0) annualRevenue = largeNumbers[0];
   // Decimals are multipliers
-  if (decimals.length >= 1) cashFlowRealizationMultiplier = decimals[0];
-  if (decimals.length >= 2) dataMaturityMultiplier = decimals[1];
-  
-  if (daysImprovement === 0 || dailyRevenue === 0) return null;
-  
+  if (decimals.length >= 1) costOfCapital = decimals[0];
+  if (decimals.length >= 2) cashFlowRealizationMultiplier = decimals[1];
+  if (decimals.length >= 3) dataMaturityMultiplier = decimals[2];
+
+  if (daysImprovement === 0 || annualRevenue === 0) return null;
+
   return {
     daysImprovement,
-    dailyRevenue,
-    workingCapitalPct,
+    annualRevenue,
+    costOfCapital,
     cashFlowRealizationMultiplier,
     dataMaturityMultiplier,
   };
@@ -351,19 +368,26 @@ function recalculateCashFlowBenefit(formula: string): { value: number; formulaTe
   if (isNoValue(formula)) {
     return { value: 0, formulaText: "No direct cash flow impact" };
   }
-  
+
   const inputs = parseCashFlowFormulaInputs(formula);
-  
+
   if (!inputs) {
     // Cannot parse - log warning and return 0 to avoid incorrect values
     console.warn(`[recalculateCashFlowBenefit] Could not parse formula, returning 0: ${formula}`);
     return { value: 0, formulaText: formula + " (could not validate)" };
   }
-  
-  const result = calculateCashFlowBenefit(inputs);
-  
-  const newFormula = `${inputs.daysImprovement} days × ${formatMoney(inputs.dailyRevenue)}/day × ${inputs.cashFlowRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
-  
+
+  const result = calculateCashFlowBenefit({
+    daysImprovement: inputs.daysImprovement,
+    annualRevenue: inputs.annualRevenue,
+    costOfCapital: inputs.costOfCapital,
+    cashFlowRealizationMultiplier: inputs.cashFlowRealizationMultiplier,
+    dataMaturityMultiplier: inputs.dataMaturityMultiplier,
+  });
+
+  // Updated formula text to show correct working capital calculation
+  const newFormula = `${inputs.annualRevenue.toLocaleString()} × (${inputs.daysImprovement} / 365) × ${inputs.costOfCapital.toFixed(2)} × ${inputs.cashFlowRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
+
   return { value: result.value, formulaText: newFormula };
 }
 
@@ -380,17 +404,17 @@ interface RiskInputs {
 function parseRiskFormulaInputs(formula: string): RiskInputs | null {
   const numbers = extractInputNumbers(formula);
   if (numbers.length < 2) return null;
-  
+
   // Risk formulas are more complex, often showing reduction %
   // E.g., "15% reduction × $6M exposure × 0.80 × 0.75"
   let reductionPct = 0;
   let exposure = 0;
   let riskRealizationMultiplier = DEFAULT_MULTIPLIERS.riskRealizationMultiplier;
   let dataMaturityMultiplier = DEFAULT_MULTIPLIERS.dataMaturityMultiplier;
-  
+
   const decimals: number[] = [];
   const largeNumbers: number[] = [];
-  
+
   for (const num of numbers) {
     if (num > 0 && num < 1) {
       decimals.push(num);
@@ -398,17 +422,17 @@ function parseRiskFormulaInputs(formula: string): RiskInputs | null {
       largeNumbers.push(num);
     }
   }
-  
+
   // First decimal is likely the reduction percentage
   if (decimals.length >= 1) reductionPct = decimals[0];
   if (decimals.length >= 2) riskRealizationMultiplier = decimals[1];
   if (decimals.length >= 3) dataMaturityMultiplier = decimals[2];
-  
+
   // Large number is the exposure
   if (largeNumbers.length > 0) exposure = largeNumbers[0];
-  
+
   if (reductionPct === 0 || exposure === 0) return null;
-  
+
   // Convert to before/after format
   return {
     probBefore: reductionPct, // Treating reduction % as risk reduction
@@ -424,15 +448,15 @@ function recalculateRiskBenefit(formula: string): { value: number; formulaText: 
   if (isNoValue(formula)) {
     return { value: 0, formulaText: "No quantifiable risk reduction" };
   }
-  
+
   const inputs = parseRiskFormulaInputs(formula);
-  
+
   if (!inputs) {
     // Cannot parse - log warning and return 0 to avoid incorrect values
     console.warn(`[recalculateRiskBenefit] Could not parse formula, returning 0: ${formula}`);
     return { value: 0, formulaText: formula + " (could not validate)" };
   }
-  
+
   // Use the deterministic risk benefit calculation
   const result = calculateRiskBenefit({
     probBefore: inputs.probBefore,
@@ -442,9 +466,9 @@ function recalculateRiskBenefit(formula: string): { value: number; formulaText: 
     riskRealizationMultiplier: inputs.riskRealizationMultiplier,
     dataMaturityMultiplier: inputs.dataMaturityMultiplier,
   });
-  
+
   const newFormula = `${(inputs.probBefore * 100).toFixed(0)}% × ${formatMoney(inputs.impactBefore)} × ${inputs.riskRealizationMultiplier.toFixed(2)} × ${inputs.dataMaturityMultiplier.toFixed(2)} = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
-  
+
   return { value: result.value, formulaText: newFormula };
 }
 
@@ -453,53 +477,53 @@ function parseFrictionCostInputs(costText: string): { annualHours: number; loade
   if (!costText || costText.toLowerCase().includes("no ") || costText === "$0") {
     return null;
   }
-  
+
   // Try to parse from formula format: "X hours × $Y/hr"
   const hoursMatch = costText.match(/([\d,]+(?:\.\d+)?)\s*(?:hours|hrs)/i);
   const rateMatch = costText.match(/\$([\d,]+(?:\.\d+)?)\/(?:hr|hour)/i);
-  
+
   if (hoursMatch && rateMatch) {
     const annualHours = parseFloat(hoursMatch[1].replace(/,/g, ""));
     const loadedHourlyRate = parseFloat(rateMatch[1].replace(/,/g, ""));
     return { annualHours, loadedHourlyRate };
   }
-  
+
   // Try to extract hours and infer rate from $X format
   if (hoursMatch) {
     const annualHours = parseFloat(hoursMatch[1].replace(/,/g, ""));
     return { annualHours, loadedHourlyRate: DEFAULT_MULTIPLIERS.loadedHourlyRate };
   }
-  
+
   // Try to parse from total cost and infer hours
   const costMatch = costText.match(/\$([\d,]+(?:\.\d+)?)(M|K)?/i);
   if (costMatch) {
     let totalCost = parseFloat(costMatch[1].replace(/,/g, ""));
     if (costMatch[2]?.toUpperCase() === "M") totalCost *= 1_000_000;
     if (costMatch[2]?.toUpperCase() === "K") totalCost *= 1_000;
-    
+
     // Infer hours from cost at default rate
     const annualHours = totalCost / DEFAULT_MULTIPLIERS.loadedHourlyRate;
     return { annualHours, loadedHourlyRate: DEFAULT_MULTIPLIERS.loadedHourlyRate };
   }
-  
+
   return null;
 }
 
 // Recalculate friction point cost using deterministic formula
-function recalculateFrictionCost(record: Step3Record): { 
-  value: number; 
-  formulaText: string; 
-  annualHours: number; 
+function recalculateFrictionCost(record: Step3Record): {
+  value: number;
+  formulaText: string;
+  annualHours: number;
   loadedHourlyRate: number;
   severity: string;
 } {
   const costText = record["Estimated Annual Cost ($)"] || "";
   const existingHours = record["Annual Hours"];
   const existingRate = record["Hourly Rate"];
-  
+
   let annualHours: number = 0;
   let loadedHourlyRate: number = DEFAULT_MULTIPLIERS.loadedHourlyRate;
-  
+
   // Try to use explicit inputs if available
   if (existingHours !== undefined) {
     annualHours = typeof existingHours === "number" ? existingHours : parseFloat(String(existingHours).replace(/,/g, "")) || 0;
@@ -507,7 +531,7 @@ function recalculateFrictionCost(record: Step3Record): {
   if (existingRate !== undefined) {
     loadedHourlyRate = typeof existingRate === "number" ? existingRate : parseFloat(String(existingRate).replace(/[$,]/g, "")) || DEFAULT_MULTIPLIERS.loadedHourlyRate;
   }
-  
+
   // If no explicit inputs, try to parse from the cost text
   if (annualHours === 0) {
     const parsed = parseFrictionCostInputs(costText);
@@ -516,24 +540,24 @@ function recalculateFrictionCost(record: Step3Record): {
       loadedHourlyRate = parsed.loadedHourlyRate;
     }
   }
-  
+
   if (annualHours === 0) {
     console.warn(`[recalculateFrictionCost] Could not parse inputs from: ${costText}`);
-    return { 
-      value: 0, 
-      formulaText: costText + " (could not validate)", 
-      annualHours: 0, 
+    return {
+      value: 0,
+      formulaText: costText + " (could not validate)",
+      annualHours: 0,
       loadedHourlyRate,
       severity: "Low"
     };
   }
-  
+
   // Use the deterministic friction cost formula
   const result = calculateFrictionCost({
     annualHours,
     loadedHourlyRate,
   });
-  
+
   // Calculate severity based on the cost
   const driverImpact = record["Primary Driver Impact"]?.toLowerCase() || "";
   const severity = calculateFrictionSeverity({
@@ -542,13 +566,13 @@ function recalculateFrictionCost(record: Step3Record): {
     affectsCompliance: driverImpact.includes("compliance") || driverImpact.includes("regulatory") || driverImpact.includes("legal"),
     affectsCustomer: driverImpact.includes("customer") || driverImpact.includes("client"),
   });
-  
+
   const formulaText = `${formatHours(annualHours)} × $${loadedHourlyRate}/hr = ${formatMoney(result.trace.output)} → ${formatMoney(result.value)}`;
-  
-  return { 
-    value: result.value, 
-    formulaText, 
-    annualHours, 
+
+  return {
+    value: result.value,
+    formulaText,
+    annualHours,
     loadedHourlyRate,
     severity
   };
@@ -559,15 +583,15 @@ function calculateTokenCostFromStep6(record: Step6Record): { monthlyTokens: numb
   const runsPerMonth = record["Runs/Month"] || 0;
   const inputTokensPerRun = record["Input Tokens/Run"] || 0;
   const outputTokensPerRun = record["Output Tokens/Run"] || 0;
-  
+
   const result = calculateTokenCost({
     runsPerMonth,
     inputTokensPerRun,
     outputTokensPerRun,
   });
-  
+
   const monthlyTokens = runsPerMonth * (inputTokensPerRun + outputTokensPerRun);
-  
+
   return { monthlyTokens, annualCost: result.value };
 }
 
@@ -576,29 +600,50 @@ export function postProcessAnalysis(analysisResult: any): any {
   if (!analysisResult || !analysisResult.steps) {
     return analysisResult;
   }
-  
+
   const steps = [...analysisResult.steps];
-  
+
   // Find all steps
+  const step0 = steps.find((s: any) => s.step === 0);
   const step3 = steps.find((s: any) => s.step === 3);
+  const step4 = steps.find((s: any) => s.step === 4);
   const step5 = steps.find((s: any) => s.step === 5);
   const step6 = steps.find((s: any) => s.step === 6);
   const step7 = steps.find((s: any) => s.step === 7);
-  
+
+  // Extract Step 0 metadata for revenue and employee count
+  let annualRevenueFromStep0 = 0;
+  let totalEmployeesFromStep0 = 0;
+
+  if (step0?.data) {
+    const step0Data = Array.isArray(step0.data) ? step0.data[0] : step0.data;
+    if (step0Data) {
+      annualRevenueFromStep0 = parseNumber(step0Data["Annual Revenue ($)"]);
+      totalEmployeesFromStep0 = typeof step0Data["Total Employees"] === "number"
+        ? step0Data["Total Employees"]
+        : parseNumber(String(step0Data["Total Employees"] || 0));
+    }
+  }
+
   // ============================================
   // STEP 3: FRICTION POINT PROCESSING
   // ============================================
   let totalFrictionCost = 0;
-  
+  const frictionCostMap = new Map<string, number>(); // Map friction points to costs
+
   if (step3?.data && Array.isArray(step3.data)) {
     console.log("[postProcessAnalysis] Processing", step3.data.length, "friction points with deterministic formulas");
-    
+
     const correctedStep3Data: Step3Record[] = [];
-    
+
     for (const record of step3.data as Step3Record[]) {
       const frictionResult = recalculateFrictionCost(record);
       totalFrictionCost += frictionResult.value;
-      
+
+      // Store friction cost by name for later linking to benefits
+      const frictionPoint = record["Friction Point"] || "";
+      frictionCostMap.set(frictionPoint, frictionResult.value);
+
       correctedStep3Data.push({
         ...record,
         "Estimated Annual Cost ($)": formatMoney(frictionResult.value),
@@ -607,14 +652,14 @@ export function postProcessAnalysis(analysisResult: any): any {
         "Hourly Rate": frictionResult.loadedHourlyRate,
         Severity: frictionResult.severity,
       });
-      
+
       console.log(`[postProcessAnalysis] Friction: ${record["Friction Point"]?.substring(0, 30)}... = ${formatMoney(frictionResult.value)} (${frictionResult.severity})`);
     }
-    
+
     step3.data = correctedStep3Data;
     console.log(`[postProcessAnalysis] Total Friction Cost: ${formatMoney(totalFrictionCost)}`);
   }
-  
+
   // ============================================
   // STEP 5: BENEFITS QUANTIFICATION PROCESSING
   // ============================================
@@ -622,39 +667,62 @@ export function postProcessAnalysis(analysisResult: any): any {
     console.log("[postProcessAnalysis] Step 5 data not found or invalid");
     return analysisResult;
   }
-  
+
   console.log("[postProcessAnalysis] Processing", step5.data.length, "use cases with deterministic formulas");
-  
+
   // Recalculate all Step 5 benefits using deterministic formulas
   const correctedStep5Data: Step5Record[] = [];
   let totalCostBenefit = 0;
   let totalRevenueBenefit = 0;
   let totalCashFlowBenefit = 0;
   let totalRiskBenefit = 0;
-  
+
+  const useCaseBenefitsForValidation: Array<{
+    id: string;
+    costBenefit: number;
+    revenueBenefit: number;
+    cashFlowBenefit: number;
+    riskBenefit: number;
+    hoursSaved?: number;
+  }> = [];
+
   for (const record of step5.data as Step5Record[]) {
     const costResult = recalculateCostBenefit(record["Cost Formula"] || "");
     const revenueResult = recalculateRevenueBenefit(record["Revenue Formula"] || "");
     const cashFlowResult = recalculateCashFlowBenefit(record["Cash Flow Formula"] || "");
     const riskResult = recalculateRiskBenefit(record["Risk Formula"] || "");
-    
+
     const totalBenefits = costResult.value + revenueResult.value + cashFlowResult.value + riskResult.value;
     const prob = record["Probability of Success"] || 0.75;
-    
+
     // Use the deterministic total value calculation
     const totalValueResult = calculateTotalAnnualValue({
       costBenefit: costResult.value,
       revenueBenefit: revenueResult.value,
       cashFlowBenefit: cashFlowResult.value,
       riskBenefit: riskResult.value,
-      probabilityOfSuccess: prob,
+      annualRevenue: annualRevenueFromStep0,
     });
-    
+
     totalCostBenefit += costResult.value;
     totalRevenueBenefit += revenueResult.value;
     totalCashFlowBenefit += cashFlowResult.value;
     totalRiskBenefit += riskResult.value;
-    
+
+    // Extract hours saved for cross-validation
+    const costFormula = record["Cost Formula"] || "";
+    const costInputs = parseCostFormulaInputs(costFormula);
+    const hoursSaved = costInputs?.hoursSaved || 0;
+
+    useCaseBenefitsForValidation.push({
+      id: record.ID,
+      costBenefit: costResult.value,
+      revenueBenefit: revenueResult.value,
+      cashFlowBenefit: cashFlowResult.value,
+      riskBenefit: riskResult.value,
+      hoursSaved,
+    });
+
     correctedStep5Data.push({
       ...record,
       "Cost Benefit ($)": formatMoney(costResult.value),
@@ -667,49 +735,140 @@ export function postProcessAnalysis(analysisResult: any): any {
       "Risk Formula": riskResult.formulaText,
       "Total Annual Value ($)": formatMoney(totalValueResult.value),
     });
-    
+
     console.log(`[postProcessAnalysis] ${record.ID}: Cost=${formatMoney(costResult.value)}, Revenue=${formatMoney(revenueResult.value)}, CashFlow=${formatMoney(cashFlowResult.value)}, Risk=${formatMoney(riskResult.value)}, Total=${formatMoney(totalValueResult.value)}`);
   }
-  
-  // Update Step 5 data
+
+  // ============================================
+  // STEP 5: CROSS-VALIDATION & BENEFITS CAP
+  // ============================================
+  const validationWarnings: string[] = [];
+  let benefitsCapped = false;
+  let capScaleFactor = 1.0;
+
+  if (annualRevenueFromStep0 > 0) {
+    const validationResult = crossValidateUseCases({
+      useCaseBenefits: useCaseBenefitsForValidation,
+      annualRevenue: annualRevenueFromStep0,
+      totalEmployees: totalEmployeesFromStep0,
+    });
+
+    validationWarnings.push(...validationResult.warnings);
+
+    if (validationResult.metrics.benefitsCapped) {
+      benefitsCapped = true;
+      capScaleFactor = validationResult.metrics.scaleFactor;
+      console.log(`[postProcessAnalysis] Benefits capped: scale factor = ${capScaleFactor.toFixed(2)}, reducing all benefits proportionally`);
+
+      // Apply proportional scaling to all corrected Step 5 records
+      const totalBenefitsBeforeCap = totalCostBenefit + totalRevenueBenefit + totalCashFlowBenefit + totalRiskBenefit;
+      const totalBenefitsAfterCap = totalBenefitsBeforeCap * capScaleFactor;
+
+      for (let i = 0; i < correctedStep5Data.length; i++) {
+        const record = correctedStep5Data[i];
+        const uc = useCaseBenefitsForValidation[i];
+
+        // Scale each benefit type by the cap scale factor
+        const scaledCostBenefit = uc.costBenefit * capScaleFactor;
+        const scaledRevenueBenefit = uc.revenueBenefit * capScaleFactor;
+        const scaledCashFlowBenefit = uc.cashFlowBenefit * capScaleFactor;
+        const scaledRiskBenefit = uc.riskBenefit * capScaleFactor;
+
+        const scaledTotal = scaledCostBenefit + scaledRevenueBenefit + scaledCashFlowBenefit + scaledRiskBenefit;
+
+        record["Cost Benefit ($)"] = formatMoney(scaledCostBenefit);
+        record["Revenue Benefit ($)"] = formatMoney(scaledRevenueBenefit);
+        record["Cash Flow Benefit ($)"] = formatMoney(scaledCashFlowBenefit);
+        record["Risk Benefit ($)"] = formatMoney(scaledRiskBenefit);
+        record["Total Annual Value ($)"] = formatMoney(scaledTotal);
+      }
+
+      totalCostBenefit *= capScaleFactor;
+      totalRevenueBenefit *= capScaleFactor;
+      totalCashFlowBenefit *= capScaleFactor;
+      totalRiskBenefit *= capScaleFactor;
+    }
+  }
+
+  // Update Step 5 data with scaled benefits
   step5.data = correctedStep5Data;
-  
+
+  // ============================================
+  // FRICTION RECOVERY: LINK STEP 3 TO STEP 5
+  // ============================================
+  const frictionRecoveryMap = new Map<string, Array<{
+    useCaseId: string;
+    useCaseName: string;
+    recoveryAmount: number;
+    recoveryPct: number;
+  }>>();
+
+  if (step4?.data && Array.isArray(step4.data)) {
+    for (const step4Record of step4.data as Step4Record[]) {
+      const targetFriction = step4Record["Target Friction"]?.toString() || "";
+      if (!targetFriction) continue;
+
+      // Find the friction cost for this target
+      const frictionCost = frictionCostMap.get(targetFriction) || 0;
+      if (frictionCost === 0) continue;
+
+      // Find the corresponding Step 5 benefit
+      const step5Record = correctedStep5Data.find(r => r.ID === step4Record.ID);
+      if (!step5Record) continue;
+
+      const useCaseBenefit = parseNumber(step5Record["Total Annual Value ($)"]);
+      const recovery = calculateFrictionRecovery(frictionCost, useCaseBenefit);
+
+      if (!frictionRecoveryMap.has(targetFriction)) {
+        frictionRecoveryMap.set(targetFriction, []);
+      }
+      frictionRecoveryMap.get(targetFriction)!.push({
+        useCaseId: step4Record.ID,
+        useCaseName: step4Record["Use Case"],
+        recoveryAmount: recovery.recoveryAmount,
+        recoveryPct: recovery.recoveryPct,
+      });
+
+      console.log(`[postProcessAnalysis] Friction Recovery: Use Case ${step4Record.ID} recovers ${formatMoney(recovery.recoveryAmount)} (${(recovery.recoveryPct * 100).toFixed(0)}%) from friction "${targetFriction}"`);
+    }
+  }
+
   // Recalculate Step 6 token costs using deterministic formula
   let totalMonthlyTokens = 0;
-  
+
   if (step6?.data && Array.isArray(step6.data)) {
     const correctedStep6Data: Step6Record[] = [];
-    
+
     for (const record of step6.data as Step6Record[]) {
       const tokenResult = calculateTokenCostFromStep6(record);
       totalMonthlyTokens += tokenResult.monthlyTokens;
-      
+
       correctedStep6Data.push({
         ...record,
         "Monthly Tokens": tokenResult.monthlyTokens,
         "Annual Token Cost ($)": formatMoney(tokenResult.annualCost),
       });
     }
-    
+
     step6.data = correctedStep6Data;
   }
-  
+
   // Recalculate Step 7 priority scores using deterministic formula
   if (step7?.data && Array.isArray(step7.data) && step6?.data) {
     const correctedStep7Data: Step7Record[] = [];
-    
+
     for (const record of step7.data as Step7Record[]) {
       // Find matching Step 5 and Step 6 records
       const step5Record = correctedStep5Data.find(r => r.ID === record.ID);
       const step6Record = (step6.data as Step6Record[]).find(r => r.ID === record.ID);
-      
+
       if (step5Record && step6Record) {
         const totalValue = parseNumber(step5Record["Total Annual Value ($)"]);
         const ttv = step6Record["Time-to-Value (months)"];
         const dataReadiness = step6Record["Data Readiness (1-5)"];
         const integrationComplexity = step6Record["Integration Complexity (1-5)"];
         const changeMgmt = step6Record["Change Mgmt (1-5)"];
-        
+
         // Use the deterministic priority score function
         const priorityResult = calculatePriorityScore({
           totalAnnualValue: totalValue,
@@ -718,15 +877,15 @@ export function postProcessAnalysis(analysisResult: any): any {
           integrationComplexity,
           changeMgmt,
         });
-        
+
         const tier = getPriorityTier(priorityResult.value);
         const phase = getRecommendedPhase(priorityResult.value, ttv);
-        
+
         correctedStep7Data.push({
           ...record,
-          "Value Score (0-40)": Math.round(priorityResult.valueScore * 0.4),
+          "Value Score (0-40)": Math.round(priorityResult.financialScore * 0.4),
           "TTV Score (0-30)": Math.round(priorityResult.ttvScore * 0.3),
-          "Effort Score (0-30)": Math.round(priorityResult.effortScore * 0.3),
+          "Effort Score (0-30)": Math.round(priorityResult.complexityScore * 0.3),
           "Priority Score (0-100)": priorityResult.value,
           "Priority Tier": tier,
           "Recommended Phase": phase,
@@ -735,24 +894,45 @@ export function postProcessAnalysis(analysisResult: any): any {
         correctedStep7Data.push(record);
       }
     }
-    
+
     step7.data = correctedStep7Data;
   }
-  
-  // Update executive dashboard with deterministic calculations
+
+  // ============================================
+  // STEP 7: POST-PROCESSING - THREE-SCENARIO SUMMARY & NPV
+  // ============================================
   const totalAnnualValue = totalCostBenefit + totalRevenueBenefit + totalCashFlowBenefit + totalRiskBenefit;
-  
+
+  // Generate three-scenario summary
+  const scenarioSummary = generateThreeScenarioSummary({
+    baseBenefitAtFullAdoption: totalAnnualValue,
+    implementationCost: totalFrictionCost * 0.5, // Use 50% of friction cost as proxy for implementation cost
+  });
+
+  // Calculate multi-year projection (5-year NPV and payback)
+  const multiYearProjection = calculateMultiYearProjection({
+    annualBenefit: totalAnnualValue,
+    implementationCost: totalFrictionCost * 0.5,
+  });
+
+  console.log(`[postProcessAnalysis] Three-Scenario Summary: ${scenarioSummary.headline}`);
+  console.log(`[postProcessAnalysis] NPV (5-year): ${formatMoney(multiYearProjection.npv)}, Payback: ${multiYearProjection.paybackMonths} months`);
+
+  // ============================================
+  // Update executive dashboard with deterministic calculations
+  // ============================================
+
   // Use the deterministic value per million tokens function
   const valuePerMillion = calculateValuePerMillionTokens({
     totalAnnualValue,
     totalMonthlyTokens,
   });
-  
+
   // Get top 5 use cases by priority score
   const sortedUseCases = [...(step7?.data || [])].sort(
     (a: any, b: any) => (b["Priority Score (0-100)"] || 0) - (a["Priority Score (0-100)"] || 0)
   );
-  
+
   const topUseCases = sortedUseCases.slice(0, 5).map((uc: any, index: number) => {
     const step5Record = correctedStep5Data.find(r => r.ID === uc.ID);
     return {
@@ -763,10 +943,40 @@ export function postProcessAnalysis(analysisResult: any): any {
       annualValue: parseNumber(step5Record?.["Total Annual Value ($)"]),
     };
   });
-  
+
   const correctedResult = {
     ...analysisResult,
     steps,
+    validationWarnings,
+    benefitsCapped,
+    capScaleFactor,
+    frictionRecovery: Array.from(frictionRecoveryMap.entries()).map(([friction, recoveries]) => ({
+      frictionPoint: friction,
+      recoveries,
+    })),
+    scenarioAnalysis: {
+      conservative: {
+        annualBenefit: formatMoney(scenarioSummary.conservative.totalBenefit),
+        npv: formatMoney(scenarioSummary.conservative.npv),
+        paybackMonths: scenarioSummary.conservative.paybackMonths,
+      },
+      moderate: {
+        annualBenefit: formatMoney(scenarioSummary.moderate.totalBenefit),
+        npv: formatMoney(scenarioSummary.moderate.npv),
+        paybackMonths: scenarioSummary.moderate.paybackMonths,
+      },
+      aggressive: {
+        annualBenefit: formatMoney(scenarioSummary.aggressive.totalBenefit),
+        npv: formatMoney(scenarioSummary.aggressive.npv),
+        paybackMonths: scenarioSummary.aggressive.paybackMonths,
+      },
+    },
+    multiYearProjection: {
+      npv: formatMoney(multiYearProjection.npv),
+      paybackMonths: multiYearProjection.paybackMonths,
+      irr: multiYearProjection.irr !== null ? `${(multiYearProjection.irr * 100).toFixed(1)}%` : 'N/A',
+      totalBenefitOverPeriod: formatMoney(multiYearProjection.totalBenefitOverPeriod),
+    },
     executiveDashboard: {
       totalRevenueBenefit,
       totalCostBenefit,
@@ -778,8 +988,8 @@ export function postProcessAnalysis(analysisResult: any): any {
       topUseCases,
     },
   };
-  
+
   console.log(`[postProcessAnalysis] Dashboard totals: TotalValue=${formatMoney(totalAnnualValue)}, Cost=${formatMoney(totalCostBenefit)}, Revenue=${formatMoney(totalRevenueBenefit)}, CashFlow=${formatMoney(totalCashFlowBenefit)}, Risk=${formatMoney(totalRiskBenefit)}`);
-  
+
   return correctedResult;
 }

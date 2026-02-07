@@ -194,6 +194,8 @@ export interface ExecutiveSummary {
 }
 
 export interface CompanyOverview {
+  annualRevenue: number;
+  totalEmployees: number;
   position: string;
   frictionTable: {
     rows: Array<{
@@ -351,12 +353,15 @@ Quantify ALL use cases across four drivers with EXPLICIT FORMULAS:
 2. REDUCE COST
    Formula: (Hours_Saved × Hourly_Rate × Adoption_Rate) × 0.90 × Maturity_Factor × P(Success)
    Hourly rates: Executive $250/hr, Senior $150/hr, Professional $100/hr, Admin $50/hr
+   - Apply 1.35× benefits loading factor for employer on-costs (taxes, benefits, overhead)
    - Cap Year 1 adoption at 80%
    - Never claim headcount reduction, only productivity gains
 
 3. INCREASE CASH FLOW
-   Formula: (Days_Reduced × Daily_Cash × Rate_Proxy) × 0.85 × Maturity_Factor × P(Success)
-   - Use company WACC or 8% default for rate proxy
+   Formula: AnnualRevenue × (Days_Reduced / 365) × Cost_of_Capital × 0.85 × Maturity_Factor
+   - Use company WACC or 8% default for cost of capital
+   - This calculates the financing cost saved by releasing working capital
+   - Example: $365M revenue, 15-day DSO improvement → $15M freed × 8% = $1.2M annual benefit
 
 4. DECREASE RISK
    Formula: (P(Event) × Expected_Loss × Risk_Reduction) × 0.80 × Maturity_Factor × P(Success)
@@ -392,6 +397,23 @@ ROUNDING RULES:
 FORMULA REQUIREMENT:
 Show explicit calculation for EVERY financial figure with × symbols visible.
 </conservative_estimation_framework>
+
+<total_benefits_cap>
+CRITICAL GUARDRAIL — REVENUE-RELATIVE CAP:
+Total annual benefits across ALL 10 use cases MUST NOT exceed 50% of the company's annual revenue.
+
+If your initial calculations exceed this cap:
+1. Proportionally scale ALL use case benefits downward
+2. Note "Benefits capped at 50% of annual revenue" in the executive summary
+3. Flag which use cases were most affected
+
+CROSS-USE-CASE VALIDATION:
+Before finalizing output, verify:
+□ Total revenue benefits across all use cases ≤ 30% of company annual revenue
+□ Total FTE hours saved ≤ 20% of estimated total workforce hours
+□ No single use case claims more than 15% of total company revenue
+□ Cash flow benefits use working capital × cost of capital (NOT days × daily revenue)
+</total_benefits_cap>
 
 <confidence_flags>
 Mark ALL non-verified information:
@@ -475,7 +497,7 @@ Table columns: ID, Use Case, Revenue Benefit ($), Revenue Formula, Cost Benefit 
 CRITICAL - Each formula MUST show the calculation with × symbols:
 - "Revenue Formula": Example: "15% lift × $190M pipeline × 0.95 × 0.75 = $20.3M"
 - "Cost Formula": Example: "2.5 FTE × $85K × 0.90 × 0.75 = $14.3M"
-- "Cash Flow Formula": Example: "12 days × $350K/day × 0.85 × 0.75 = $2.7M"
+- "Cash Flow Formula": Example: "$500M revenue × (12 / 365) × 8% WACC × 0.85 × 0.75 = $200K"
 - "Risk Formula": Example: "15% reduction × $6M exposure × 0.80 × 0.75 = $540K"
 
 STEP 6: EFFORT & TOKEN MODELING
@@ -506,6 +528,8 @@ Before output, verify:
 □ All assumptions flagged with confidence levels
 □ 5+ business functions represented
 □ Benefits rounded DOWN, timelines rounded UP
+□ Executive summary uses CONSERVATIVE scenario numbers only
+□ Cash flow benefits calculated as working capital × cost of capital
 </quality_gates>
 
 <forbidden_outputs>
@@ -600,6 +624,8 @@ JSON structure:
     "recommendedAction": "Specific next step with timeline (e.g., Approve Q1 pilot for Security Questionnaire Automation Engine with 90-day deployment target)"
   },
   "companyOverview": {
+    "annualRevenue": 0,
+    "totalEmployees": 0,
     "position": "What they do in 10 words or fewer. Market position. 2-3 scale metrics (revenue, employees, customers).",
     "frictionTable": {
       "rows": [
