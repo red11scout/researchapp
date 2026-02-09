@@ -130,6 +130,12 @@ interface DashboardData {
     description: string;
     items: UseCase[];
   };
+  scenarioComparison?: {
+    conservative: { annualBenefit: string; npv: string; paybackMonths: number };
+    moderate: { annualBenefit: string; npv: string; paybackMonths: number };
+    aggressive: { annualBenefit: string; npv: string; paybackMonths: number };
+  };
+  frictionByTheme?: Record<string, string[]>;
 }
 
 const DEFAULT_DATA: DashboardData = {
@@ -649,6 +655,203 @@ const UseCaseCarousel = ({ data, clientName }: UseCaseCarouselProps) => {
   );
 };
 
+interface FrictionPointsProps {
+  data: DashboardData['frictionByTheme'];
+}
+
+const FrictionPoints = ({ data }: FrictionPointsProps) => {
+  if (!data || Object.keys(data).length === 0) return null;
+
+  const themeColors: Record<string, { bg: string; text: string; border: string }> = {
+    'Organizational': { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+    'Technical': { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+    'Operational': { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+    'Data': { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200' },
+    'Process': { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+    'Change': { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
+    'Strategic': { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+    'Other': { bg: 'bg-slate-50', text: 'text-slate-700', border: 'border-slate-200' },
+  };
+
+  const getThemeColors = (theme: string) => {
+    return themeColors[theme] || themeColors['Other'];
+  };
+
+  return (
+    <section className="py-16 md:py-28 bg-white">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6">
+        <div className="mb-6 md:mb-12">
+          <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A] mb-2">Implementation Friction Points</h2>
+          <p className="text-gray-600 text-sm md:text-base max-w-2xl">
+            Key challenges and constraints organized by strategic theme
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+          {Object.entries(data).map((entry, idx) => {
+            const [theme, points] = entry;
+            const colors = getThemeColors(theme);
+
+            return (
+              <motion.div
+                key={theme}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.08 }}
+                viewport={{ once: true }}
+                className={`rounded-xl border-2 ${colors.border} ${colors.bg} p-5 md:p-6`}
+              >
+                <h3 className={`text-lg font-bold ${colors.text} mb-4 flex items-center gap-2`}>
+                  <div className={`w-2 h-2 rounded-full ${colors.text.replace('text-', 'bg-')}`}></div>
+                  {theme}
+                </h3>
+
+                <ul className="space-y-2 md:space-y-3">
+                  {Array.isArray(points) && points.map((point, pidx) => (
+                    <li key={pidx} className="flex items-start gap-2 text-gray-700 text-sm md:text-base">
+                      <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full mt-1.5 ${colors.text.replace('text-', 'bg-')}`}></span>
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+interface FinancialSensitivityAnalysisProps {
+  data: DashboardData['scenarioComparison'];
+}
+
+const FinancialSensitivityAnalysis = ({ data }: FinancialSensitivityAnalysisProps) => {
+  if (!data) return null;
+
+  const scenarios = [
+    {
+      key: 'conservative',
+      label: 'Conservative',
+      description: 'Phased adoption with extended implementation',
+      bgColor: 'bg-slate-50',
+      borderColor: 'border-slate-300',
+      textColor: 'text-slate-700',
+      accentColor: '#6B7280',
+    },
+    {
+      key: 'moderate',
+      label: 'Base Case',
+      description: 'Standard deployment with full integration',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-300',
+      textColor: 'text-blue-700',
+      accentColor: '#0066CC',
+      isHighlight: true,
+    },
+    {
+      key: 'aggressive',
+      label: 'Optimistic',
+      description: 'Accelerated rollout with quick wins',
+      bgColor: 'bg-emerald-50',
+      borderColor: 'border-emerald-300',
+      textColor: 'text-emerald-700',
+      accentColor: '#059669',
+    },
+  ];
+
+  return (
+    <section className="py-16 md:py-28 bg-slate-50">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-6">
+        <div className="mb-6 md:mb-12">
+          <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A] mb-2">Financial Sensitivity Analysis</h2>
+          <p className="text-gray-600 text-sm md:text-base max-w-2xl">
+            Scenario analysis showing projected outcomes under different implementation approaches
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+          {scenarios.map((scenario, idx) => {
+            const scenarioData = data[scenario.key as keyof typeof data];
+            if (!scenarioData) return null;
+
+            return (
+              <motion.div
+                key={scenario.key}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                viewport={{ once: true }}
+                className={`rounded-2xl border-2 p-6 md:p-8 ${scenario.bgColor} ${scenario.borderColor} ${scenario.isHighlight ? 'ring-2 ring-offset-2 ring-blue-400 shadow-lg' : 'shadow-sm'}`}
+              >
+                {scenario.isHighlight && (
+                  <div className="mb-4">
+                    <span className="inline-block bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                      Recommended
+                    </span>
+                  </div>
+                )}
+
+                <h3 className={`text-xl md:text-2xl font-bold ${scenario.textColor} mb-1`}>
+                  {scenario.label}
+                </h3>
+                <p className="text-gray-600 text-xs md:text-sm mb-6 md:mb-8">
+                  {scenario.description}
+                </p>
+
+                <div className="space-y-4 md:space-y-6">
+                  {/* Annual Benefit */}
+                  <div className="border-b border-gray-200 pb-4 md:pb-6">
+                    <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
+                      Annual Benefit
+                    </p>
+                    <p className={`text-2xl md:text-3xl font-bold ${scenario.textColor}`}>
+                      {scenarioData.annualBenefit}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      Year 1 projected value
+                    </p>
+                  </div>
+
+                  {/* 5-Year NPV */}
+                  <div className="border-b border-gray-200 pb-4 md:pb-6">
+                    <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
+                      5-Year NPV
+                    </p>
+                    <p className={`text-2xl md:text-3xl font-bold ${scenario.textColor}`}>
+                      {scenarioData.npv}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-2">
+                      Net present value at 10% discount
+                    </p>
+                  </div>
+
+                  {/* Payback Period */}
+                  <div className="pb-4 md:pb-6">
+                    <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
+                      Payback Period
+                    </p>
+                    <div className="flex items-baseline gap-2">
+                      <p className={`text-2xl md:text-3xl font-bold ${scenario.textColor}`}>
+                        {scenarioData.paybackMonths}
+                      </p>
+                      <p className="text-gray-600 text-sm md:text-base">months</p>
+                    </div>
+                    <p className="text-gray-500 text-xs mt-2">
+                      Time to return on investment
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 interface CTASectionProps {
   totalValue: string;
   valueSuffix: string;
@@ -717,6 +920,8 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
       <ExecutiveSummary data={data.executiveSummary} />
       <PriorityMatrix data={data.priorityMatrix} />
       <UseCaseCarousel data={data.useCases} clientName={data.clientName} />
+      {data.frictionByTheme && <FrictionPoints data={data.frictionByTheme} />}
+      {data.scenarioComparison && <FinancialSensitivityAnalysis data={data.scenarioComparison} />}
       <CTASection
         totalValue={data.hero.totalValue}
         valueSuffix={data.hero.valueSuffix}

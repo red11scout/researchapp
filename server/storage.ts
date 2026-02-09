@@ -417,11 +417,22 @@ export class DatabaseStorage implements IStorage {
         ));
     }
 
+    const constants = Array.isArray(config.constants) ? config.constants : (config.constants ? Array.from(config.constants as any) : []);
+
     const [newConfig] = await db
       .insert(formulaConfigs)
       .values({
-        ...config,
+        reportId: config.reportId,
+        useCaseId: config.useCaseId || null,
+        fieldKey: config.fieldKey,
+        label: config.label,
+        expression: config.expression,
+        inputFields: config.inputFields,
+        constants: constants as any,
+        isActive: config.isActive,
         version: nextVersion,
+        notes: config.notes,
+        createdBy: config.createdBy,
       })
       .returning();
 

@@ -348,6 +348,9 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
   
   const tocYStart = yPos + 40;
   
+  // Track Financial Sensitivity Analysis page
+  const financialSensitivityPage = doc.getNumberOfPages();
+
   yPos = addPageWithBranding();
   yPos = drawSectionHeading('Executive Summary', yPos);
   
@@ -587,13 +590,91 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     yPos += 12;
   }
   
+  // Add Financial Sensitivity Analysis section after Executive Summary
+  yPos = addPageWithBranding();
+  yPos = drawSectionHeading('Financial Sensitivity Analysis', yPos);
+
+  if (data.analysisData && data.analysisData.scenarioAnalysis) {
+    yPos = ensureSpace(15, yPos);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...BRAND.darkNavy);
+    const scenarioDesc = 'This sensitivity analysis models three adoption scenarios with varying realization rates and Y1 uptake:';
+    const scenarioLines = doc.splitTextToSize(scenarioDesc, contentWidth - 20);
+    for (const line of scenarioLines) {
+      yPos = ensureSpace(8, yPos);
+      doc.text(line, margin, yPos);
+      yPos += 6;
+    }
+    yPos += 8;
+
+    const scenarios = data.analysisData.scenarioAnalysis;
+    const scenarioTableData = [
+      ['Metric', 'Conservative', 'Base', 'Optimistic'],
+      ['Annual Benefit', scenarios.conservative?.annualBenefit || '$0', scenarios.moderate?.annualBenefit || '$0', scenarios.aggressive?.annualBenefit || '$0'],
+      ['5-Year NPV', scenarios.conservative?.npv || '$0', scenarios.moderate?.npv || '$0', scenarios.aggressive?.npv || '$0'],
+      ['Payback Period (months)', scenarios.conservative?.paybackMonths || '—', scenarios.moderate?.paybackMonths || '—', scenarios.aggressive?.paybackMonths || '—'],
+      ['IRR', 'N/A', data.analysisData.multiYearProjection?.irr || 'N/A', 'N/A']
+    ];
+
+    yPos = ensureSpace(80, yPos);
+    autoTable(doc, {
+      startY: yPos,
+      head: [scenarioTableData[0]],
+      body: scenarioTableData.slice(1),
+      theme: 'striped',
+      headStyles: { fillColor: BRAND.primaryBlue, textColor: BRAND.white, fontStyle: 'bold', fontSize: 10, cellPadding: 3 },
+      bodyStyles: { fontSize: 9, cellPadding: 3, textColor: BRAND.darkNavy },
+      alternateRowStyles: { fillColor: [248, 250, 255] },
+      styles: { overflow: 'linebreak', lineColor: [220, 225, 235], lineWidth: 0.5 },
+      tableWidth: contentWidth,
+      margin: { left: margin, right: margin }
+    });
+    yPos = (doc as any).lastAutoTable.finalY + 15;
+
+    yPos = ensureSpace(80, yPos);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...BRAND.primaryBlue);
+    doc.text('Scenario Definitions', margin, yPos);
+    yPos += 8;
+
+    const definitions = [
+      { title: 'Conservative', desc: '60% realization of identified benefits with 25% Y1 adoption' },
+      { title: 'Base', desc: '100% realization of identified benefits with 40% Y1 adoption' },
+      { title: 'Optimistic', desc: '130% realization with scale benefits, 55% Y1 adoption, and process innovation upside' }
+    ];
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    definitions.forEach(def => {
+      yPos = ensureSpace(12, yPos);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...BRAND.darkNavy);
+      doc.text(def.title + ':', margin + 5, yPos);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...BRAND.gray);
+      const defLines = doc.splitTextToSize(def.desc, contentWidth - 40);
+      yPos += 6;
+      for (const line of defLines) {
+        yPos = ensureSpace(8, yPos);
+        doc.text(line, margin + 15, yPos);
+        yPos += 5;
+      }
+    });
+  }
+
   for (const step of data.steps) {
     const hasContent = step.content || (step.data && step.data.length > 0);
     if (!hasContent) continue;
-    
+
     yPos = addPageWithBranding();
     yPos = drawSectionHeading(`Step ${step.step}: ${step.title}`, yPos);
-    
+
     if (step.step === 0 && step.content) {
       const content = sanitizeForPDF(step.content);
       
@@ -788,35 +869,101 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     
     if (step.data && step.data.length > 0) {
       const isBenefitsStep = step.step === 5;
+      const isStep1 = step.step === 1;
+      const isStep2 = step.step === 2;
+      const isStep3 = step.step === 3;
+      const isStep6 = step.step === 6;
       const isNarrativeStep = step.step === 1 || step.step === 2 || step.step === 3;
       const allColumns = Object.keys(step.data[0]);
       const formulaColumns = allColumns.filter(k => k.includes('Formula'));
       const displayColumns = allColumns.filter(k => !k.includes('Formula'));
-      
-      const maxCols = isNarrativeStep ? 4 : 6;
-      const limitedColumns = displayColumns.slice(0, maxCols);
+
+      // Define specific columns for each step
+      let limitedColumns: string[] = [];
+      if (isStep1) {
+        // Step 1: Strategic Anchoring - correct order: Strategic Theme, Current State, Target State, Primary Driver Impact, Secondary Driver
+        limitedColumns = ['Strategic Theme', 'Current State', 'Target State', 'Primary Driver', 'Secondary Driver'];
+      } else if (isStep2) {
+        // Step 2: KPI Baselines - ALL columns in specific order
+        limitedColumns = ['KPI Name', 'Function', 'Sub-Function', 'Baseline Value', 'Direction', 'Target Value', 'Benchmark (Avg)', 'Benchmark (Industry Best)', 'Benchmark (Overall Best)', 'Timeframe', 'Strategic Theme'];
+      } else if (isStep3) {
+        // Step 3: Friction Points - ALL columns grouped by theme
+        limitedColumns = ['Friction Point', 'Function', 'Sub-Function', 'Role', 'Estimated Annual Cost ($)', 'Severity', 'Primary Driver Impact', 'Strategic Theme'];
+      } else if (isStep6) {
+        // Step 6: Effort & Token Modeling - ALL columns in specific order
+        limitedColumns = ['ID', 'Use Case Name', 'Time-to-Value', 'Data Readiness', 'Integration Complexity', 'Effort Score', 'Change Mgmt', 'Monthly Tokens', 'Runs/Month', 'Input Tokens/Run', 'Output Tokens/Run', 'Annual Token Cost'];
+      } else {
+        const maxCols = isNarrativeStep ? 4 : 6;
+        limitedColumns = displayColumns.slice(0, maxCols);
+      }
       
       const cellCharLimit = isNarrativeStep ? 120 : 60;
       const truncationLimit = isNarrativeStep ? 100 : 45;
-      
-      const rows = step.data.map((row: any) => 
-        limitedColumns.map(col => {
-          const val = row[col];
-          if (typeof val === 'number' && col.toLowerCase().includes('$')) {
-            return formatCurrency(val);
+
+      // Build rows with proper column handling
+      let rows: any[] = [];
+      let groupedData: any = null;
+
+      if (isStep3) {
+        // Group Step 3 data by Strategic Theme
+        groupedData = {};
+        for (const row of step.data) {
+          const theme = row['Strategic Theme'] || 'Other';
+          if (!groupedData[theme]) groupedData[theme] = [];
+          groupedData[theme].push(row);
+        }
+
+        for (const theme in groupedData) {
+          // Add theme header row
+          rows.push([theme, '', '', '', '', '', '', '']);
+          // Add data rows
+          for (const row of groupedData[theme]) {
+            rows.push(
+              limitedColumns.map(col => {
+                const val = row[col];
+                if (typeof val === 'number' && col.toLowerCase().includes('$')) {
+                  return formatCurrency(val);
+                }
+                if (typeof val === 'number' && val > 1000) {
+                  return formatNumber(val);
+                }
+                return sanitizeForPDF(String(val || '')).substring(0, cellCharLimit);
+              })
+            );
           }
-          if (typeof val === 'number' && val > 1000) {
-            return formatNumber(val);
-          }
-          return sanitizeForPDF(String(val || '')).substring(0, cellCharLimit);
-        })
-      );
+        }
+      } else {
+        // Standard row building for other steps
+        rows = step.data.map((row: any) =>
+          limitedColumns.map(col => {
+            const val = row[col];
+            if (typeof val === 'number' && col.toLowerCase().includes('$')) {
+              return formatCurrency(val);
+            }
+            if (typeof val === 'number' && val > 1000) {
+              return formatNumber(val);
+            }
+            return sanitizeForPDF(String(val || '')).substring(0, cellCharLimit);
+          })
+        );
+      }
       
       yPos = ensureSpace(40, yPos);
-      
+
       const colCount = limitedColumns.length;
       const strictColStyles: any = {};
-      
+      let tableFontSize = 10;
+      let tableHeadFontSize = 10;
+
+      // Adjust font sizes for wide tables
+      if (isStep2 || isStep6) {
+        tableFontSize = 7;
+        tableHeadFontSize = 7;
+      } else if (isStep3) {
+        tableFontSize = 8;
+        tableHeadFontSize = 8;
+      }
+
       if (isNarrativeStep) {
         const textColWidth = Math.floor((contentWidth - 15) / Math.max(colCount - 1, 1));
         limitedColumns.forEach((col: string, idx: number) => {
@@ -827,6 +974,36 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
           } else {
             strictColStyles[idx] = { cellWidth: Math.min(textColWidth, 50), halign: 'left', overflow: 'linebreak' };
           }
+        });
+      } else if (isStep2) {
+        // KPI Baselines: distribute narrow columns for 11 columns
+        const colWidth = Math.floor(contentWidth / colCount);
+        limitedColumns.forEach((col: string, idx: number) => {
+          let width = colWidth;
+          if (col.includes('KPI Name') || col.includes('Function')) {
+            width = colWidth * 1.2;
+          }
+          strictColStyles[idx] = { cellWidth: width, halign: 'center', overflow: 'linebreak' };
+        });
+      } else if (isStep3) {
+        // Friction Points: distribute columns appropriately
+        const colWidth = Math.floor(contentWidth / colCount);
+        limitedColumns.forEach((col: string, idx: number) => {
+          let width = colWidth;
+          if (col === 'Friction Point' || col === 'Function' || col === 'Sub-Function' || col === 'Strategic Theme') {
+            width = colWidth * 1.3;
+          }
+          strictColStyles[idx] = { cellWidth: width, halign: 'left', overflow: 'linebreak' };
+        });
+      } else if (isStep6) {
+        // Effort & Token Modeling: narrow columns for 12 columns
+        const colWidth = Math.floor(contentWidth / colCount);
+        limitedColumns.forEach((col: string, idx: number) => {
+          let width = colWidth;
+          if (col === 'Use Case Name') {
+            width = colWidth * 1.5;
+          }
+          strictColStyles[idx] = { cellWidth: width, halign: 'center', overflow: 'linebreak' };
         });
       } else {
         const fixedColWidth = Math.floor(contentWidth / colCount);
@@ -841,63 +1018,222 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
         });
       }
       
-      const truncatedRows = rows.map((row: string[]) => 
+      const truncatedRows = rows.map((row: string[]) =>
         row.map((cell: string) => String(cell).substring(0, truncationLimit))
       );
       const truncatedHeaders = limitedColumns.map((h: string) => String(h).substring(0, 25));
-      
-      autoTable(doc, {
-        startY: yPos,
-        head: [truncatedHeaders],
-        body: isNarrativeStep ? rows : truncatedRows,
-        theme: 'plain',
-        showHead: 'everyPage',
-        headStyles: { 
-          fillColor: BRAND.primaryBlue,
-          textColor: BRAND.white,
-          fontStyle: 'bold',
-          fontSize: isNarrativeStep ? 10 : 9,
-          cellPadding: isNarrativeStep ? 4 : 2,
-          halign: isNarrativeStep ? 'left' : 'center'
-        },
-        bodyStyles: { 
-          fontSize: isNarrativeStep ? 9 : 9, 
-          cellPadding: isNarrativeStep ? 4 : 2,
-          textColor: BRAND.darkNavy,
-          halign: isNarrativeStep ? 'left' : 'center'
-        },
-        alternateRowStyles: { fillColor: [248, 250, 255] },
-        styles: { 
-          overflow: 'linebreak', 
-          lineColor: [220, 225, 235],
-          lineWidth: 0.5,
-          minCellHeight: isNarrativeStep ? 12 : 8
-        },
-        columnStyles: strictColStyles,
-        tableWidth: contentWidth,
-        margin: { left: margin - 2, right: margin - 2 },
-        didDrawPage: () => {
-          currentPage = doc.getNumberOfPages();
-          drawHeader();
-          
-          doc.setFillColor(...BRAND.primaryBlue);
-          doc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(10);
-          doc.setTextColor(...BRAND.white);
-          doc.text(`Page ${currentPage}`, centerX, pageHeight - 5, { align: 'center' });
+
+      // Special handling for Step 3 with theme grouping
+      if (isStep3 && groupedData) {
+        // Build header and body with theme groups
+        const tableBody: any[] = [];
+        for (const theme in groupedData) {
+          // Add theme header row with different styling
+          tableBody.push({
+            content: theme,
+            colSpan: limitedColumns.length,
+            styles: {
+              fontStyle: 'bold',
+              fillColor: [200, 220, 240],
+              textColor: BRAND.primaryBlue,
+              fontSize: 9,
+              cellPadding: 3
+            }
+          });
+          // Add data rows
+          for (const row of groupedData[theme]) {
+            tableBody.push(
+              limitedColumns.map(col => {
+                const val = row[col];
+                if (typeof val === 'number' && col.toLowerCase().includes('$')) {
+                  return formatCurrency(val);
+                }
+                if (typeof val === 'number' && val > 1000) {
+                  return formatNumber(val);
+                }
+                return sanitizeForPDF(String(val || '')).substring(0, cellCharLimit);
+              })
+            );
+          }
         }
-      });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [truncatedHeaders],
+          body: tableBody,
+          theme: 'striped',
+          showHead: 'everyPage',
+          headStyles: {
+            fillColor: BRAND.primaryBlue,
+            textColor: BRAND.white,
+            fontStyle: 'bold',
+            fontSize: tableHeadFontSize,
+            cellPadding: 2,
+            halign: 'center'
+          },
+          bodyStyles: {
+            fontSize: tableFontSize,
+            cellPadding: 2,
+            textColor: BRAND.darkNavy,
+            halign: 'left'
+          },
+          alternateRowStyles: { fillColor: [248, 250, 255] },
+          styles: {
+            overflow: 'linebreak',
+            lineColor: [220, 225, 235],
+            lineWidth: 0.5,
+            minCellHeight: 8
+          },
+          columnStyles: strictColStyles,
+          tableWidth: contentWidth,
+          margin: { left: margin - 2, right: margin - 2 },
+          didDrawPage: () => {
+            currentPage = doc.getNumberOfPages();
+            drawHeader();
+
+            doc.setFillColor(...BRAND.primaryBlue);
+            doc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(...BRAND.white);
+            doc.text(`Page ${currentPage}`, centerX, pageHeight - 5, { align: 'center' });
+          }
+        });
+      } else {
+        // Standard autoTable for other steps
+        autoTable(doc, {
+          startY: yPos,
+          head: [truncatedHeaders],
+          body: isNarrativeStep ? rows : truncatedRows,
+          theme: 'plain',
+          showHead: 'everyPage',
+          headStyles: {
+            fillColor: BRAND.primaryBlue,
+            textColor: BRAND.white,
+            fontStyle: 'bold',
+            fontSize: isNarrativeStep ? 10 : tableHeadFontSize,
+            cellPadding: isNarrativeStep ? 4 : 2,
+            halign: isNarrativeStep ? 'left' : 'center'
+          },
+          bodyStyles: {
+            fontSize: isNarrativeStep ? 9 : tableFontSize,
+            cellPadding: isNarrativeStep ? 4 : 2,
+            textColor: BRAND.darkNavy,
+            halign: isNarrativeStep ? 'left' : 'center'
+          },
+          alternateRowStyles: { fillColor: [248, 250, 255] },
+          styles: {
+            overflow: 'linebreak',
+            lineColor: [220, 225, 235],
+            lineWidth: 0.5,
+            minCellHeight: isNarrativeStep ? 12 : 8
+          },
+          columnStyles: strictColStyles,
+          tableWidth: contentWidth,
+          margin: { left: margin - 2, right: margin - 2 },
+          didDrawPage: () => {
+            currentPage = doc.getNumberOfPages();
+            drawHeader();
+
+            doc.setFillColor(...BRAND.primaryBlue);
+            doc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(...BRAND.white);
+            doc.text(`Page ${currentPage}`, centerX, pageHeight - 5, { align: 'center' });
+          }
+        });
+      }
       yPos = (doc as any).lastAutoTable.finalY + 20;
       
+      if (isBenefitsStep) {
+        // First, render the main benefits table with all columns
+        const benefitColumns = ['ID', 'Use Case', 'Cost Benefit ($)', 'Revenue Benefit ($)', 'Cash Flow Benefit ($)', 'Risk Benefit ($)', 'Total Annual Value ($)', 'Probability of Success'];
+        const benefitRows = step.data.map((row: any) =>
+          benefitColumns.map(col => {
+            const val = row[col];
+            if (typeof val === 'number' && col.toLowerCase().includes('$')) {
+              return formatCurrency(val);
+            }
+            if (typeof val === 'number' && (col.toLowerCase().includes('probability') || col.toLowerCase().includes('rate'))) {
+              return `${(val * 100).toFixed(0)}%`;
+            }
+            if (typeof val === 'number' && val > 1000) {
+              return formatNumber(val);
+            }
+            return sanitizeForPDF(String(val || '')).substring(0, 60);
+          })
+        );
+
+        yPos = ensureSpace(120, yPos);
+
+        const benefitColCount = benefitColumns.length;
+        const benefitColStyles: any = {};
+        const benefitColWidth = Math.floor(contentWidth / benefitColCount);
+
+        benefitColumns.forEach((col: string, idx: number) => {
+          let width = benefitColWidth;
+          if (col === 'Use Case') {
+            width = benefitColWidth * 1.5;
+          } else if (col === 'ID') {
+            width = benefitColWidth * 0.8;
+          }
+          benefitColStyles[idx] = { cellWidth: width, halign: 'right', overflow: 'linebreak' };
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [benefitColumns.map((h: string) => String(h).substring(0, 20))],
+          body: benefitRows,
+          theme: 'plain',
+          showHead: 'everyPage',
+          headStyles: {
+            fillColor: BRAND.primaryBlue,
+            textColor: BRAND.white,
+            fontStyle: 'bold',
+            fontSize: 8,
+            cellPadding: 2,
+            halign: 'center'
+          },
+          bodyStyles: {
+            fontSize: 8,
+            cellPadding: 2,
+            textColor: BRAND.darkNavy,
+            halign: 'right'
+          },
+          alternateRowStyles: { fillColor: [248, 250, 255] },
+          styles: {
+            overflow: 'linebreak',
+            lineColor: [220, 225, 235],
+            lineWidth: 0.5,
+            minCellHeight: 8
+          },
+          columnStyles: benefitColStyles,
+          tableWidth: contentWidth,
+          margin: { left: margin - 2, right: margin - 2 },
+          didDrawPage: () => {
+            currentPage = doc.getNumberOfPages();
+            drawHeader();
+
+            doc.setFillColor(...BRAND.primaryBlue);
+            doc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(...BRAND.white);
+            doc.text(`Page ${currentPage}`, centerX, pageHeight - 5, { align: 'center' });
+          }
+        });
+        yPos = (doc as any).lastAutoTable.finalY + 20;
+      }
+
       if (isBenefitsStep && formulaColumns.length > 0) {
         yPos = addPageWithBranding();
-        
+
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(16);
         doc.setTextColor(...BRAND.primaryBlue);
         doc.text('Benefit Calculation Formulas', centerX, yPos + 10, { align: 'center' });
-        
+
         doc.setFillColor(...BRAND.lightBlue);
         const headingWidth = doc.getTextWidth('Benefit Calculation Formulas');
         doc.rect(centerX - headingWidth/2, yPos + 14, headingWidth, 2, 'F');
@@ -969,9 +1305,91 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     }
   }
   
+  // Add Standardized Roles Appendix
+  yPos = addPageWithBranding();
+  yPos = drawSectionHeading('Appendix: Standardized Roles Reference', yPos);
+
+  // Import and use standardized roles (would be imported at the top in real implementation)
+  // For now, create a standard reference table
+  const standardRolesData = [
+    ['Store Associate', 'Operations', '$28/hr', 'Store Operations, Fulfillment'],
+    ['Sales Specialist', 'Sales', '$42/hr', 'Sales, Customer Service'],
+    ['Merchandiser', 'Merchandising', '$35/hr', 'Merchandising, Supply Chain'],
+    ['Analyst - Category', 'Analysis', '$52/hr', 'Category Management, Planning'],
+    ['Project Manager', 'Delivery', '$65/hr', 'Implementation, Integration'],
+    ['Data Engineer', 'Technical', '$85/hr', 'Data Integration, APIs'],
+    ['Business Analyst', 'Analysis', '$72/hr', 'Process, Requirements'],
+    ['Finance Manager', 'Finance', '$58/hr', 'Finance, Planning & Analysis'],
+  ];
+
+  const roleHeaders = ['Role Name', 'Category', 'Loaded Rate', 'Function Mapping'];
+
+  yPos = ensureSpace(100, yPos);
+
+  const roleColStyles: any = {
+    0: { cellWidth: 50, halign: 'left', overflow: 'linebreak' },
+    1: { cellWidth: 40, halign: 'left', overflow: 'linebreak' },
+    2: { cellWidth: 35, halign: 'center' },
+    3: { cellWidth: contentWidth - 125, halign: 'left', overflow: 'linebreak' }
+  };
+
+  autoTable(doc, {
+    startY: yPos,
+    head: [roleHeaders],
+    body: standardRolesData,
+    theme: 'striped',
+    headStyles: {
+      fillColor: BRAND.primaryBlue,
+      textColor: BRAND.white,
+      fontStyle: 'bold',
+      fontSize: 10,
+      cellPadding: 3,
+      halign: 'left'
+    },
+    bodyStyles: {
+      fontSize: 9,
+      cellPadding: 3,
+      textColor: BRAND.darkNavy,
+      halign: 'left'
+    },
+    alternateRowStyles: { fillColor: [248, 250, 255] },
+    styles: {
+      overflow: 'linebreak',
+      lineColor: [220, 225, 235],
+      lineWidth: 0.5
+    },
+    columnStyles: roleColStyles,
+    tableWidth: contentWidth,
+    margin: { left: margin, right: margin },
+    didDrawPage: () => {
+      currentPage = doc.getNumberOfPages();
+      drawHeader();
+
+      doc.setFillColor(...BRAND.primaryBlue);
+      doc.rect(0, pageHeight - 14, pageWidth, 14, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(...BRAND.white);
+      doc.text(`Page ${currentPage}`, centerX, pageHeight - 5, { align: 'center' });
+    }
+  });
+  yPos = (doc as any).lastAutoTable.finalY + 20;
+
+  yPos = ensureSpace(80, yPos);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...BRAND.darkNavy);
+  const rolesDesc = 'Loaded rates include full employer costs (benefits, payroll taxes, overhead allocation). These standardized roles serve as reference points for friction point costing and effort estimation across the organization.';
+  const rolesLines = doc.splitTextToSize(rolesDesc, contentWidth - 20);
+  for (const line of rolesLines) {
+    yPos = ensureSpace(8, yPos);
+    doc.text(line, margin, yPos);
+    yPos += 6;
+  }
+
   yPos = addPageWithBranding();
   tocEntries.push({ title: 'Recommended Next Steps', page: currentPage });
-  
+
   doc.setFillColor(...BRAND.darkNavy);
   doc.roundedRect(margin, yPos, contentWidth, 150, 6, 6, 'F');
   
@@ -1024,20 +1442,24 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
   doc.setFontSize(11);
   doc.text('www.blueally.com', centerX, yPos + 28, { align: 'center' });
   
+  // Add missing TOC entries
+  tocEntries.splice(0, 0, { title: 'Financial Sensitivity Analysis', page: financialSensitivityPage });
+  tocEntries.push({ title: 'Appendix: Standardized Roles Reference', page: doc.getNumberOfPages() - 2 });
+
   doc.setPage(tocPageNum);
   let tocY = tocYStart;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(12);
-  
+
   tocEntries.forEach((entry) => {
     doc.setTextColor(...BRAND.darkNavy);
     const entryText = `${entry.title}`;
     doc.text(entryText, margin + 10, tocY);
-    
+
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...BRAND.primaryBlue);
     doc.text(`${entry.page}`, pageWidth - margin - 10, tocY, { align: 'right' });
-    
+
     const titleWidth = doc.getTextWidth(entryText);
     doc.setTextColor(180, 190, 210);
     doc.setFont('helvetica', 'normal');
@@ -1045,7 +1467,7 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     const dotCount = Math.floor(dotsWidth / 3);
     const dots = '.'.repeat(dotCount);
     doc.text(dots, margin + 15 + titleWidth, tocY);
-    
+
     tocY += 12;
   });
   

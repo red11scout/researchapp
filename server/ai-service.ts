@@ -2,6 +2,7 @@ import pRetry, { AbortError } from "p-retry";
 import Anthropic from "@anthropic-ai/sdk";
 import https from "https";
 import { postProcessAnalysis } from "./calculation-postprocessor";
+import { getStandardizedRolesPromptText } from "../shared/standardizedRoles";
 
 // Create a custom HTTPS agent that bypasses any proxy settings
 const directAgent = new https.Agent({
@@ -487,7 +488,7 @@ STEP 1: STRATEGIC ANCHORING & BUSINESS DRIVERS
 - Each theme must span 2-3 business functions and map to 2-4 use cases
 - Financially quantify each theme (sum of associated use case benefits)
 - These 5 themes are the CONNECTIVE TISSUE for the entire report — every item in Steps 2-7 must link back to one of these themes
-Table columns: Strategic Theme, Current State, Target State, Primary Driver, Secondary Driver
+Table columns: Strategic Theme, Current State, Target State, Primary Driver Impact, Secondary Driver
 
 STEP 2: BUSINESS FUNCTION INVENTORY & KPI BASELINES
 - 10-12 critical functions with KPI baselines
@@ -507,6 +508,8 @@ STEP 3: FRICTION POINT MAPPING
 - Rate severity: Critical/High/Medium
 - Each friction point must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
 - FUNCTION/SUB-FUNCTION CONSTRAINT: Use the SAME standardized Function and Sub-Function labels as Step 2. The Function/Sub-Function for a friction point MUST correspond to a Function/Sub-Function that has a KPI in Step 2.
+- STANDARDIZED ROLES REQUIREMENT: For each friction point, assign the most appropriate role from the standardized roles list provided below. Use the exact role name (capitalization and format must match EXACTLY). Use the corresponding loaded hourly rate from the standardized table.
+${getStandardizedRolesPromptText()}
 Table columns: Friction Point, Function, Sub-Function, Estimated Annual Cost ($), Severity (Critical/High/Medium), Primary Driver Impact, Strategic Theme
 
 STEP 4: AI USE CASE GENERATION
@@ -542,7 +545,8 @@ STEP 6: EFFORT & TOKEN MODELING
 - Round UP time-to-value estimates
 - Flag prerequisite work NOT in timeline
 - Each use case must include a "Strategic Theme" column linking to Step 1
-Table columns: ID, Use Case, Data Readiness (1-5), Integration Complexity (1-5), Effort Score (1-5), Change Mgmt (1-5), Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost ($), Time-to-Value (months), Strategic Theme
+- REQUIRED FIELD: Time-to-Value (months) is MANDATORY for every use case. Cannot be empty or null.
+Table columns: ID, Use Case, Data Readiness (1-5), Integration Complexity (1-5), Effort Score (1-5), Change Mgmt (1-5), Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost ($), Time-to-Value (months) [REQUIRED], Strategic Theme
 (Use $3 per 1M input tokens, $15 per 1M output tokens for Claude pricing)
 
 STEP 7: PRIORITY SCORING & ROADMAP
@@ -623,7 +627,7 @@ JSON structure:
 {
   "steps": [
     {"step": 0, "title": "Company Overview", "content": "Brief 2-3 sentence company overview. The structured companyOverview object contains authoritative company data: position, friction table, data readiness, and why now sections.", "data": null},
-    {"step": 1, "title": "Strategic Anchoring & Business Drivers", "content": "brief intro", "data": [{"Strategic Theme": "...", "Primary Driver": "...", "Secondary Driver": "...", "Current State": "...", "Target State": "..."}]},
+    {"step": 1, "title": "Strategic Anchoring & Business Drivers", "content": "brief intro", "data": [{"Strategic Theme": "...", "Primary Driver Impact": "...", "Secondary Driver": "...", "Current State": "...", "Target State": "..."}]},
     {"step": 2, "title": "Business Function Inventory & KPI Baselines", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "KPI Name": "...", "Baseline Value": "...", "Industry Benchmark": "...", "Target Value": "...", "Direction": "↑/↓", "Timeframe": "...", "Measurement Method": "..."}]},
     {"step": 3, "title": "Friction Point Mapping", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "Friction Point": "...", "Severity": "Critical/High/Medium", "Primary Driver Impact": "...", "Estimated Annual Cost ($)": "..."}]},
     {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "..."}]},

@@ -622,7 +622,7 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
     "Strategic Theme",
     "Current State",
     "Target State",
-    "Primary Driver",
+    "Primary Driver Impact",
     "Secondary Driver",
   ],
   2: [ // Business Function Inventory & KPI Baselines
@@ -664,7 +664,8 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
   ],
   6: [ // Effort & Token Modeling
     "ID",
-    "Use Case",
+    "Use Case Name",
+    "Time-to-Value",
     "Data Readiness",
     "Integration Complexity",
     "Effort Score",
@@ -674,7 +675,6 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
     "Input Tokens/Run",
     "Output Tokens/Run",
     "Annual Token Cost",
-    "Strategic Theme",
   ],
 };
 
@@ -683,8 +683,9 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
  * Maps common AI-generated key names to the canonical column name.
  */
 export const COLUMN_NAME_ALIASES: Record<string, string> = {
-  // Step 3
+  // Step 1
   "Primary Driver": "Primary Driver Impact",
+  // Step 3
   "Estimated Annual Cost": "Estimated Annual Cost ($)",
   // Step 4
   "Use Case": "Use Case Name",
@@ -697,6 +698,9 @@ export const COLUMN_NAME_ALIASES: Record<string, string> = {
   "Change Mgmt (1-5)": "Change Mgmt",
   "Annual Token Cost ($)": "Annual Token Cost",
   "Time-to-Value (months)": "Time-to-Value",
+  "Time to Value": "Time-to-Value",
+  "TTV": "Time-to-Value",
+  "TTV (months)": "Time-to-Value",
   // Step 2 benchmark rename
   "Industry Benchmark": "Benchmark (Avg)",
   // Step 2 measurement method (hidden)

@@ -43,6 +43,11 @@ interface ReportAnalysisData {
     data: any;
   }>;
   summary: string;
+  scenarioAnalysis?: {
+    conservative?: { annualBenefit: number | string; npv: number | string; paybackMonths: number };
+    moderate?: { annualBenefit: number | string; npv: number | string; paybackMonths: number };
+    aggressive?: { annualBenefit: number | string; npv: number | string; paybackMonths: number };
+  };
   executiveDashboard: {
     totalRevenueBenefit: number;
     totalCostBenefit: number;
@@ -194,6 +199,74 @@ function generateValueInsights(dashboard: ReportAnalysisData['executiveDashboard
 }
 
 // ============================================================================
+// EXTRACT SCENARIO COMPARISON from analysis data
+// ============================================================================
+function extractScenarioComparison(analysisData: ReportAnalysisData): {
+  conservative: { annualBenefit: string; npv: string; paybackMonths: number };
+  moderate: { annualBenefit: string; npv: string; paybackMonths: number };
+  aggressive: { annualBenefit: string; npv: string; paybackMonths: number };
+} | null {
+  if (!analysisData.scenarioAnalysis) {
+    return null;
+  }
+
+  const scenarios = analysisData.scenarioAnalysis;
+  const result: any = {};
+
+  const scenarioKeys = ['conservative', 'moderate', 'aggressive'] as const;
+  for (const key of scenarioKeys) {
+    const scenario = scenarios[key];
+    if (scenario) {
+      result[key] = {
+        annualBenefit: formatValue(
+          typeof scenario.annualBenefit === 'string'
+            ? parseFloat(scenario.annualBenefit.replace(/[$,]/g, ''))
+            : scenario.annualBenefit
+        ),
+        npv: formatValue(
+          typeof scenario.npv === 'string'
+            ? parseFloat(scenario.npv.replace(/[$,]/g, ''))
+            : scenario.npv
+        ),
+        paybackMonths: typeof scenario.paybackMonths === 'string'
+          ? parseInt(scenario.paybackMonths, 10)
+          : scenario.paybackMonths,
+      };
+    }
+  }
+
+  return Object.keys(result).length === 3 ? result : null;
+}
+
+// ============================================================================
+// GROUP FRICTION POINTS by Strategic Theme
+// ============================================================================
+function extractFrictionByTheme(steps: ReportAnalysisData['steps']): Record<string, string[]> | null {
+  const frictionData: Record<string, string[]> = {};
+
+  // Look for friction points data (typically in step 7 or a similar step)
+  const frictionStep = steps.find(s => s.step === 7 || s.title?.toLowerCase().includes('friction'));
+
+  if (!frictionStep?.data || !Array.isArray(frictionStep.data)) {
+    return null;
+  }
+
+  for (const item of frictionStep.data) {
+    const theme = item['Strategic Theme'] || item.strategicTheme || item.theme || 'Other';
+    const friction = item['Friction Point'] || item.frictionPoint || item.point || '';
+
+    if (friction) {
+      if (!frictionData[theme]) {
+        frictionData[theme] = [];
+      }
+      frictionData[theme].push(friction);
+    }
+  }
+
+  return Object.keys(frictionData).length > 0 ? frictionData : null;
+}
+
+// ============================================================================
 // EXTRACT USE CASE DETAILS from step data
 // ============================================================================
 function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: string): {
@@ -234,7 +307,12 @@ function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: 
     );
     if (effort) {
       result.effortScore = effort["Effort Score (1-5)"] || effort["Effort Score"] || effort.effortScore || 3;
-      result.timeToValue = effort["Time-to-Value (months)"] || effort.timeToValue || effort["Time-to-Value"] || 6;
+      // Extract Time-to-Value with multiple field name variants
+      const ttv = effort["Time-to-Value (months)"] ??
+                  effort["Time-to-Value"] ??
+                  effort.timeToValue ??
+                  6;
+      result.timeToValue = typeof ttv === 'string' ? parseInt(ttv, 10) : (ttv || 6);
       result.monthlyTokens = effort["Monthly Tokens"] || effort.monthlyTokens || 0;
       result.dataReadiness = effort["Data Readiness (1-5)"] || effort["Data Readiness"] || effort.dataReadiness || 3;
       result.integrationComplexity = effort["Integration Complexity (1-5)"] || effort["Integration Complexity"] || effort.integrationComplexity || 3;
@@ -402,6 +480,10 @@ export function mapReportToDashboardData(report: Report): DashboardData {
     });
   }
 
+  // Extract scenario comparison and friction by theme
+  const scenarioComparison = extractScenarioComparison(analysis);
+  const frictionByTheme = extractFrictionByTheme(analysis.steps);
+
   const createdDate = new Date(report.createdAt);
   const reportDate = createdDate.toLocaleDateString('en-US', {
     year: 'numeric',
@@ -409,7 +491,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
     day: 'numeric'
   });
 
-  return {
+  const dashboardOutput: any = {
     clientName: report.companyName,
     reportDate,
     hero: {
@@ -436,6 +518,16 @@ export function mapReportToDashboardData(report: Report): DashboardData {
       items: useCaseItems
     }
   };
+
+  // Add optional properties if they exist
+  if (scenarioComparison) {
+    dashboardOutput.scenarioComparison = scenarioComparison;
+  }
+  if (frictionByTheme) {
+    dashboardOutput.frictionByTheme = frictionByTheme;
+  }
+
+  return dashboardOutput;
 }
 
 export type { Report as ReportForDashboard };

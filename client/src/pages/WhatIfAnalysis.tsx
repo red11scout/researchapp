@@ -40,12 +40,13 @@ import {
 } from "@/components/ui/tooltip";
 import { FormulaExplorer } from "@/components/FormulaExplorer";
 import { format, parseFormattedValue } from '@/lib/formatters';
-import { 
-  quickCalculate, 
-  calculateBenefitTotals, 
+import {
+  quickCalculate,
+  calculateBenefitTotals,
   calculatePriorityScore,
-  calculateTokenCosts 
+  calculateTokenCosts
 } from '@/lib/calculationEngine';
+import { STANDARDIZED_ROLES, getRolesGroupedByCategory } from '@shared/standardizedRoles';
 import { 
   ArrowLeft, 
   Plus, 
@@ -1258,13 +1259,14 @@ export default function WhatIfAnalysis() {
 
         {/* Formula Explorer */}
         <FormulaExplorer
-          open={formulaExplorerOpen}
-          onOpenChange={setFormulaExplorerOpen}
+          isOpen={formulaExplorerOpen}
+          onClose={() => setFormulaExplorerOpen(false)}
           fieldKey={selectedFormulaField?.fieldKey || ""}
           fieldLabel={selectedFormulaField?.fieldLabel || ""}
+          reportId={null}
           useCaseId={selectedFormulaField?.useCaseId}
           useCaseName={selectedFormulaField?.useCaseName}
-          context={selectedFormulaField?.context || {}}
+          currentContext={selectedFormulaField?.context || {}}
           onFormulaChange={(newResult) => {
             toast({
               title: "Formula Updated",

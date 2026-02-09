@@ -38,6 +38,8 @@ import {
   reorderColumns,
 } from "../shared/taxonomy";
 
+import { verifyAndNormalizeRoles, STANDARDIZED_BENEFITS_LOADING } from '../shared/standardizedRoles';
+
 // ============================================================================
 // PER-USE-CASE REVENUE CAP — No single use case can exceed 15% of revenue
 // ============================================================================
@@ -837,6 +839,12 @@ export function postProcessAnalysis(analysisResult: any): any {
       }
     }
     console.log(`[postProcessAnalysis] Normalized ${step3.data.length} Step 3 Function/Sub-Function values`);
+
+    // Normalize roles to standardized table
+    const roleVerification = verifyAndNormalizeRoles(step3.data, 'Function', 'Hourly Rate');
+    console.log('[postProcessAnalysis] Role verification:', roleVerification.map(r =>
+      `${r.frictionPoint}: ${r.originalRole || 'none'} → ${r.matchedRole} ($${r.standardizedRate}/hr) [${r.confidence}]`
+    ).join('\n'));
   }
 
   // Normalize Step 4 (Use Cases) - Function/Sub-Function + AI Primitives
@@ -1104,6 +1112,13 @@ export function postProcessAnalysis(analysisResult: any): any {
 
   if (step6?.data && Array.isArray(step6.data)) {
     const correctedStep6Data: any[] = [];
+
+    // Ensure Time-to-Value exists
+    for (const row of step6.data as Step6Record[]) {
+      if (!row['Time-to-Value'] && !row['Time-to-Value (months)']) {
+        row['Time-to-Value'] = 6; // Default 6 months
+      }
+    }
 
     for (const record of step6.data as Step6Record[]) {
       const tokenResult = calculateTokenCostFromStep6(record);

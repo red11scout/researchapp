@@ -73,6 +73,7 @@ import {
   type AssumptionCategory,
   type AssumptionSource
 } from "@shared/schema";
+import { STANDARDIZED_ROLES, getRolesGroupedByCategory } from "@shared/standardizedRoles";
 
 type ScenarioType = "base" | "conservative" | "aggressive";
 
@@ -626,6 +627,47 @@ export default function Assumptions() {
                                 </TableBody>
                               </Table>
                             </div>
+                            {category === "labor_statistics" && (
+                              <div className="mt-6 pt-6 border-t">
+                                <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                  <Users className="h-4 w-4" />
+                                  Standardized Roles Reference
+                                </h4>
+                                <p className="text-sm text-slate-600 mb-4">
+                                  Below are the standardized roles with their default fully-loaded hourly rates used in cost calculations:
+                                </p>
+                                <div className="overflow-x-auto">
+                                  <Table className="text-sm">
+                                    <TableHeader>
+                                      <TableRow className="bg-slate-50">
+                                        <TableHead>Role Name</TableHead>
+                                        <TableHead>Category</TableHead>
+                                        <TableHead>Default Rate</TableHead>
+                                        <TableHead>Description</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {STANDARDIZED_ROLES.map((role) => (
+                                        <TableRow key={role.roleId}>
+                                          <TableCell className="font-medium">{role.roleName}</TableCell>
+                                          <TableCell>
+                                            <Badge variant="outline" className="capitalize">
+                                              {role.category}
+                                            </Badge>
+                                          </TableCell>
+                                          <TableCell className="font-mono">
+                                            ${role.defaultLoadedHourlyRate}/hr
+                                          </TableCell>
+                                          <TableCell className="text-slate-600 max-w-xs">
+                                            {role.description}
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                </div>
+                              </div>
+                            )}
                           </AccordionContent>
                         </AccordionItem>
                       );

@@ -4,6 +4,8 @@
 // REDESIGNED: Fixes cash flow formula, adds scenario support, benefits cap, NPV, adoption curves,
 // 5-criterion priority scoring, friction-benefit linking, and input validation
 
+import { getRoleRate, STANDARDIZED_BENEFITS_LOADING } from '../../shared/standardizedRoles';
+
 export interface FormulaInput {
   [key: string]: number;
 }
@@ -163,6 +165,22 @@ export const DEFAULT_MULTIPLIERS = {
   // Risk reduction cap: max reduction vs current exposure
   riskReductionCapPct: 0.50,  // 50% of current exposure
 };
+
+/**
+ * Get the loaded hourly rate for a standardized role.
+ * When using standardized roles, benefits loading should be 1.0
+ * since the rate already includes all employer costs.
+ */
+export function getLoadedRateForRole(roleId: string, overrides?: Record<string, number>): {
+  rate: number;
+  benefitsLoading: number;
+} {
+  const rate = overrides?.[roleId] ?? getRoleRate(roleId);
+  return {
+    rate,
+    benefitsLoading: STANDARDIZED_BENEFITS_LOADING, // 1.0 — rate is already fully loaded
+  };
+}
 
 // ============================================================================
 // DATA MATURITY LEVELS

@@ -61,35 +61,10 @@ import blueAllyLogoUrl from '@assets/image_1764369352062.png';
 import blueAllyLogoWhiteUrl from '@assets/blueally-logo-white.png';
 import { WorkflowExportPanel } from "@/components/report/WorkflowExportPanel";
 import { generateBoardPresentationPDF } from "@/lib/pdfGenerator";
+import { STEP_COLUMN_ORDER, COLUMN_NAME_ALIASES } from "@shared/taxonomy";
 
 // ===== COLUMN ORDERING & TAXONOMY =====
-// Defines the exact column order for each step's table and provides helpers
-const STEP_COLUMN_ORDER: Record<number, string[]> = {
-  1: ["Strategic Theme", "Current State", "Target State", "Primary Driver", "Secondary Driver"],
-  2: ["KPI Name", "Function", "Sub-Function", "Baseline Value", "Direction", "Target Value",
-      "Benchmark (Avg)", "Benchmark (Industry Best)", "Benchmark (Overall Best)", "Industry Benchmark", "Timeframe", "Strategic Theme"],
-  3: ["Friction Point", "Function", "Sub-Function", "Estimated Annual Cost ($)", "Severity", "Primary Driver Impact", "Strategic Theme"],
-  4: ["ID", "Use Case Name", "Description", "Target Friction", "AI Primitives", "Human-in-the-Loop Checkpoint", "Function", "Sub-Function", "Strategic Theme"],
-  6: ["ID", "Use Case", "Data Readiness", "Integration Complexity", "Effort Score", "Change Mgmt",
-      "Monthly Tokens", "Runs/Month", "Input Tokens/Run", "Output Tokens/Run", "Annual Token Cost", "Strategic Theme"],
-};
-
-// Column name aliases: maps common AI-generated key names to canonical names
-const COLUMN_NAME_ALIASES: Record<string, string> = {
-  "Primary Driver": "Primary Driver Impact",
-  "Estimated Annual Cost": "Estimated Annual Cost ($)",
-  "Use Case": "Use Case Name",
-  "HITL Checkpoint": "Human-in-the-Loop Checkpoint",
-  "Human-in-the-Loop": "Human-in-the-Loop Checkpoint",
-  "Data Readiness (1-5)": "Data Readiness",
-  "Integration Complexity (1-5)": "Integration Complexity",
-  "Effort Score (1-5)": "Effort Score",
-  "Change Mgmt (1-5)": "Change Mgmt",
-  "Annual Token Cost ($)": "Annual Token Cost",
-  "Time-to-Value (months)": "Time-to-Value",
-  // Step 2 benchmark rename
-  "Industry Benchmark": "Benchmark (Avg)",
-};
+// Imported from shared/taxonomy.ts for consistency across all report pages
 
 // Hidden columns that should never appear in main table views
 const HIDDEN_COLUMNS = new Set([

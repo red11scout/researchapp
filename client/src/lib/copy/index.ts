@@ -56,7 +56,7 @@ export const copy = {
     },
   },
 
-  dashboard: {
+  dashboardPanel: {
     share: {
       title: 'Share Dashboard',
       subtitle: 'Create a shareable link to this dashboard. Links expire after 30 days.',
