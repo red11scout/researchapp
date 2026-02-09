@@ -671,8 +671,15 @@ export interface MiroMetadata {
   };
 }
 
-// AI Primitives for pattern classification
-export type AIPrimitive = 
+// AI Primitives for pattern classification (standardized labels from taxonomy.ts)
+export type AIPrimitive =
+  | "Research & Information Retrieval"
+  | "Content Creation"
+  | "Data Analysis"
+  | "Conversational Interfaces"
+  | "Workflow Automation"
+  | "Coding Assistance"
+  // Legacy lowercase values for backward compatibility
   | "classification"
   | "generation"
   | "retrieval"
@@ -686,21 +693,43 @@ export type AIPrimitive =
   | "orchestration"
   | "monitoring";
 
-// Business functions for pattern mapping
+// Business functions for pattern mapping (standardized labels from taxonomy.ts)
 export type BusinessFunction =
   | "Sales"
   | "Marketing"
   | "Finance"
   | "Operations"
+  | "Human Resources"
+  | "Information Technology"
+  | "Customer Service"
+  | "Legal & Compliance"
+  | "Supply Chain"
+  | "Product Management"
+  | "Digital Commerce"
+  | "Merchandising"
+  | "Logistics"
+  // Legacy values for backward compatibility
   | "HR"
   | "IT"
   | "Legal"
   | "Compliance"
-  | "Customer Service"
-  | "Supply Chain"
   | "R&D"
   | "Executive"
   | "General";
+
+// Benchmark data structure for KPIs (Step 2)
+export interface BenchmarkData {
+  industryAverage: string;
+  industryBestInClass: string;
+  overallBestInClass: string;
+}
+
+// Strategic theme linkage
+export interface StrategicThemeLink {
+  themeNumber: number;
+  themeName: string;
+  financialImpact: number;
+}
 
 // Pattern mapping result with primary, secondary, and HITL
 export interface AgenticPatternMapping {

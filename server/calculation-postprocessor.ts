@@ -29,6 +29,15 @@ import {
   validateInputs,
 } from "../src/calc/formulas";
 
+import {
+  normalizeFunctionName,
+  normalizeSubFunction,
+  normalizeAIPrimitive,
+  annotateFormula,
+  verifyFunctionConsistency,
+  reorderColumns,
+} from "../shared/taxonomy";
+
 // ============================================================================
 // PER-USE-CASE REVENUE CAP — No single use case can exceed 15% of revenue
 // ============================================================================
@@ -126,29 +135,44 @@ interface Step5Record {
   "Use Case": string;
   "Revenue Benefit ($)"?: string;
   "Revenue Formula"?: string;
+  "Revenue Formula Labels"?: any;
   "Cost Benefit ($)"?: string;
   "Cost Formula"?: string;
+  "Cost Formula Labels"?: any;
   "Cash Flow Benefit ($)"?: string;
   "Cash Flow Formula"?: string;
+  "Cash Flow Formula Labels"?: any;
   "Risk Benefit ($)"?: string;
   "Risk Formula"?: string;
+  "Risk Formula Labels"?: any;
   "Total Annual Value ($)"?: string;
   "Probability of Success"?: number;
+  "Strategic Theme"?: string;
+  [key: string]: any;
 }
 
 interface Step6Record {
   ID: string;
   "Use Case": string;
-  "Data Readiness (1-5)": number;
-  "Integration Complexity (1-5)": number;
-  "Change Mgmt (1-5)": number;
-  "Effort Score (1-5)": number;
-  "Time-to-Value (months)": number;
+  // Support both original (1-5) suffix and normalized names
+  "Data Readiness (1-5)"?: number;
+  "Data Readiness"?: number;
+  "Integration Complexity (1-5)"?: number;
+  "Integration Complexity"?: number;
+  "Change Mgmt (1-5)"?: number;
+  "Change Mgmt"?: number;
+  "Effort Score (1-5)"?: number;
+  "Effort Score"?: number;
+  "Time-to-Value (months)"?: number;
+  "Time-to-Value"?: number;
   "Input Tokens/Run": number;
   "Output Tokens/Run": number;
   "Runs/Month": number;
   "Monthly Tokens"?: number;
   "Annual Token Cost ($)"?: string;
+  "Annual Token Cost"?: string;
+  "Strategic Theme"?: string;
+  [key: string]: any;
 }
 
 interface Step7Record {
@@ -160,6 +184,8 @@ interface Step7Record {
   "Priority Score (0-100)"?: number;
   "Priority Tier"?: string;
   "Recommended Phase"?: string;
+  "Strategic Theme"?: string;
+  [key: string]: any;
 }
 
 // Parse a number from a string that may contain currency symbols, commas, M/K suffixes
@@ -783,6 +809,62 @@ export function postProcessAnalysis(analysisResult: any): any {
   }
 
   // ============================================
+  // FUNCTION/SUB-FUNCTION NORMALIZATION (Steps 2, 3, 4)
+  // ============================================
+  const step2 = steps.find((s: any) => s.step === 2);
+
+  // Normalize Step 2 (KPIs)
+  if (step2?.data && Array.isArray(step2.data)) {
+    for (const record of step2.data) {
+      if (record["Function"]) {
+        record["Function"] = normalizeFunctionName(record["Function"]);
+      }
+      if (record["Sub-Function"]) {
+        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
+      }
+    }
+    console.log(`[postProcessAnalysis] Normalized ${step2.data.length} Step 2 Function/Sub-Function values`);
+  }
+
+  // Normalize Step 3 (Friction Points)
+  if (step3?.data && Array.isArray(step3.data)) {
+    for (const record of step3.data) {
+      if (record["Function"]) {
+        record["Function"] = normalizeFunctionName(record["Function"]);
+      }
+      if (record["Sub-Function"]) {
+        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
+      }
+    }
+    console.log(`[postProcessAnalysis] Normalized ${step3.data.length} Step 3 Function/Sub-Function values`);
+  }
+
+  // Normalize Step 4 (Use Cases) - Function/Sub-Function + AI Primitives
+  if (step4?.data && Array.isArray(step4.data)) {
+    for (const record of step4.data) {
+      if (record["Function"]) {
+        record["Function"] = normalizeFunctionName(record["Function"]);
+      }
+      if (record["Sub-Function"]) {
+        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
+      }
+      if (record["AI Primitives"]) {
+        record["AI Primitives"] = normalizeAIPrimitive(record["AI Primitives"]);
+      }
+    }
+    console.log(`[postProcessAnalysis] Normalized ${step4.data.length} Step 4 Function/Sub-Function/AI Primitives values`);
+  }
+
+  // Cross-step verification
+  if (step2?.data && step3?.data && step4?.data) {
+    const verification = verifyFunctionConsistency(step2.data, step3.data, step4.data);
+    if (verification.warnings.length > 0) {
+      console.log(`[postProcessAnalysis] Function consistency warnings:`);
+      verification.warnings.forEach(w => console.log(`  - ${w}`));
+    }
+  }
+
+  // ============================================
   // BUILD STEP 3 FRICTION HOURS LOOKUP (for cross-referencing)
   // ============================================
   let frictionLookup = new Map<string, FrictionHoursLookup>();
@@ -891,16 +973,26 @@ export function postProcessAnalysis(analysisResult: any): any {
       hoursSaved,
     });
 
+    // Annotate formulas with labeled components for UI display
+    const revenueAnnotation = annotateFormula(revenueResult.formulaText, "revenue");
+    const costAnnotation = annotateFormula(costResult.formulaText, "cost");
+    const cashFlowAnnotation = annotateFormula(cashFlowResult.formulaText, "cashflow");
+    const riskAnnotation = annotateFormula(riskResult.formulaText, "risk");
+
     correctedStep5Data.push({
       ...record,
       "Cost Benefit ($)": formatMoney(costVal),
       "Cost Formula": costResult.formulaText,
+      "Cost Formula Labels": costAnnotation,
       "Revenue Benefit ($)": formatMoney(revVal),
       "Revenue Formula": revenueResult.formulaText,
+      "Revenue Formula Labels": revenueAnnotation,
       "Cash Flow Benefit ($)": formatMoney(cfVal),
       "Cash Flow Formula": cashFlowResult.formulaText,
+      "Cash Flow Formula Labels": cashFlowAnnotation,
       "Risk Benefit ($)": formatMoney(riskVal),
       "Risk Formula": riskResult.formulaText,
+      "Risk Formula Labels": riskAnnotation,
       "Total Annual Value ($)": formatMoney(ucTotal),
     });
 
@@ -1017,24 +1109,30 @@ export function postProcessAnalysis(analysisResult: any): any {
       const tokenResult = calculateTokenCostFromStep6(record);
       totalMonthlyTokens += tokenResult.monthlyTokens;
 
-      // Build record with logically ordered columns
+      // Build record with logically ordered columns (matches STEP_COLUMN_ORDER[6] in taxonomy.ts)
       const orderedRecord: Record<string, any> = {
         // Group 1: Identity
         "ID": record.ID,
         "Use Case": record["Use Case"],
-        // Group 2: AI Execution
+        // Group 2: Implementation Readiness
+        "Data Readiness": record["Data Readiness (1-5)"] ?? record["Data Readiness"],
+        "Integration Complexity": record["Integration Complexity (1-5)"] ?? record["Integration Complexity"],
+        "Effort Score": record["Effort Score (1-5)"] ?? record["Effort Score"],
+        "Change Mgmt": record["Change Mgmt (1-5)"] ?? record["Change Mgmt"],
+        // Group 3: AI Execution
+        "Monthly Tokens": tokenResult.monthlyTokens,
         "Runs/Month": record["Runs/Month"],
         "Input Tokens/Run": record["Input Tokens/Run"],
         "Output Tokens/Run": record["Output Tokens/Run"],
-        "Monthly Tokens": tokenResult.monthlyTokens,
-        "Annual Token Cost ($)": formatMoney(tokenResult.annualCost),
-        // Group 3: Implementation Readiness
-        "Effort Score (1-5)": record["Effort Score (1-5)"],
-        "Data Readiness (1-5)": record["Data Readiness (1-5)"],
-        "Integration Complexity (1-5)": record["Integration Complexity (1-5)"],
-        "Change Mgmt (1-5)": record["Change Mgmt (1-5)"],
-        "Time-to-Value (months)": record["Time-to-Value (months)"],
+        "Annual Token Cost": formatMoney(tokenResult.annualCost),
+        // Group 4: Timeline
+        "Time-to-Value": record["Time-to-Value (months)"] ?? record["Time-to-Value"],
       };
+
+      // Preserve Strategic Theme if present
+      if (record["Strategic Theme"]) {
+        orderedRecord["Strategic Theme"] = record["Strategic Theme"];
+      }
 
       correctedStep6Data.push(orderedRecord);
     }
@@ -1053,10 +1151,10 @@ export function postProcessAnalysis(analysisResult: any): any {
 
       if (step5Record && step6Record) {
         const totalValue = parseNumber(step5Record["Total Annual Value ($)"]);
-        const ttv = step6Record["Time-to-Value (months)"];
-        const dataReadiness = step6Record["Data Readiness (1-5)"];
-        const integrationComplexity = step6Record["Integration Complexity (1-5)"];
-        const changeMgmt = step6Record["Change Mgmt (1-5)"];
+        const ttv = step6Record["Time-to-Value"] ?? step6Record["Time-to-Value (months)"] ?? 6;
+        const dataReadiness = step6Record["Data Readiness"] ?? step6Record["Data Readiness (1-5)"] ?? 3;
+        const integrationComplexity = step6Record["Integration Complexity"] ?? step6Record["Integration Complexity (1-5)"] ?? 3;
+        const changeMgmt = step6Record["Change Mgmt"] ?? step6Record["Change Mgmt (1-5)"] ?? 3;
 
         // Use the deterministic priority score function
         const priorityResult = calculatePriorityScore({
@@ -1068,9 +1166,9 @@ export function postProcessAnalysis(analysisResult: any): any {
         });
 
         const tier = getPriorityTier(priorityResult.value);
-        const phase = getRecommendedPhase(priorityResult.value, ttv);
+        const phase = getRecommendedPhase(priorityResult.value, ttv as number);
 
-        correctedStep7Data.push({
+        const step7Entry: any = {
           ...record,
           "Value Score (0-40)": Math.round(priorityResult.financialScore * 0.4),
           "TTV Score (0-30)": Math.round(priorityResult.ttvScore * 0.3),
@@ -1078,7 +1176,12 @@ export function postProcessAnalysis(analysisResult: any): any {
           "Priority Score (0-100)": priorityResult.value,
           "Priority Tier": tier,
           "Recommended Phase": phase,
-        });
+        };
+        // Preserve Strategic Theme if present
+        if (record["Strategic Theme"]) {
+          step7Entry["Strategic Theme"] = record["Strategic Theme"];
+        }
+        correctedStep7Data.push(step7Entry);
       } else {
         correctedStep7Data.push(record);
       }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Layout from "@/components/Layout";
@@ -61,6 +61,180 @@ import blueAllyLogoUrl from '@assets/image_1764369352062.png';
 import blueAllyLogoWhiteUrl from '@assets/blueally-logo-white.png';
 import { WorkflowExportPanel } from "@/components/report/WorkflowExportPanel";
 import { generateBoardPresentationPDF } from "@/lib/pdfGenerator";
+
+// ===== COLUMN ORDERING & TAXONOMY =====
+// Defines the exact column order for each step's table and provides helpers
+const STEP_COLUMN_ORDER: Record<number, string[]> = {
+  1: ["Strategic Theme", "Current State", "Target State", "Primary Driver", "Secondary Driver"],
+  2: ["KPI Name", "Function", "Sub-Function", "Baseline Value", "Direction", "Target Value",
+      "Benchmark (Avg)", "Benchmark (Industry Best)", "Benchmark (Overall Best)", "Industry Benchmark", "Timeframe", "Strategic Theme"],
+  3: ["Friction Point", "Function", "Sub-Function", "Estimated Annual Cost ($)", "Severity", "Primary Driver Impact", "Strategic Theme"],
+  4: ["ID", "Use Case Name", "Description", "Target Friction", "AI Primitives", "Human-in-the-Loop Checkpoint", "Function", "Sub-Function", "Strategic Theme"],
+  6: ["ID", "Use Case", "Data Readiness", "Integration Complexity", "Effort Score", "Change Mgmt",
+      "Monthly Tokens", "Runs/Month", "Input Tokens/Run", "Output Tokens/Run", "Annual Token Cost", "Strategic Theme"],
+};
+
+// Column name aliases: maps common AI-generated key names to canonical names
+const COLUMN_NAME_ALIASES: Record<string, string> = {
+  "Primary Driver": "Primary Driver Impact",
+  "Estimated Annual Cost": "Estimated Annual Cost ($)",
+  "Use Case": "Use Case Name",
+  "HITL Checkpoint": "Human-in-the-Loop Checkpoint",
+  "Human-in-the-Loop": "Human-in-the-Loop Checkpoint",
+  "Data Readiness (1-5)": "Data Readiness",
+  "Integration Complexity (1-5)": "Integration Complexity",
+  "Effort Score (1-5)": "Effort Score",
+  "Change Mgmt (1-5)": "Change Mgmt",
+  "Annual Token Cost ($)": "Annual Token Cost",
+  "Time-to-Value (months)": "Time-to-Value",
+  // Step 2 benchmark rename
+  "Industry Benchmark": "Benchmark (Avg)",
+};
+
+// Hidden columns that should never appear in main table views
+const HIDDEN_COLUMNS = new Set([
+  "Cost Formula", "Revenue Formula", "Cash Flow Formula", "Risk Formula", "Benefit Formula",
+  "Cost Formula Labels", "Revenue Formula Labels", "Cash Flow Formula Labels", "Risk Formula Labels",
+  "Annual Hours", "Hourly Rate", "Measurement Method",
+  "Friction Point", // Only hidden when it's a "Target Friction" alias scenario
+]);
+
+function reorderAndFilterColumns(data: any[], stepNum: number): any[] {
+  if (!data || data.length === 0) return data;
+
+  const desiredOrder = STEP_COLUMN_ORDER[stepNum];
+  if (!desiredOrder || desiredOrder.length === 0) return data;
+
+  return data.map(row => {
+    // Normalize column names
+    const normalizedRow: Record<string, any> = {};
+    for (const [key, value] of Object.entries(row)) {
+      const canonicalKey = COLUMN_NAME_ALIASES[key] || key;
+      normalizedRow[canonicalKey] = value;
+    }
+
+    // Reorder: desired columns first, then extras
+    const reorderedRow: Record<string, any> = {};
+    for (const col of desiredOrder) {
+      if (col in normalizedRow) {
+        reorderedRow[col] = normalizedRow[col];
+      }
+    }
+    // Add remaining non-hidden columns
+    for (const [key, value] of Object.entries(normalizedRow)) {
+      if (!(key in reorderedRow) && !HIDDEN_COLUMNS.has(key)) {
+        reorderedRow[key] = value;
+      }
+    }
+    return reorderedRow;
+  });
+}
+
+// Get visible columns for a step (excludes hidden/formula columns)
+function getVisibleColumns(row: any, stepNum: number): string[] {
+  const desiredOrder = STEP_COLUMN_ORDER[stepNum];
+  if (!desiredOrder) {
+    return Object.keys(row).filter(k => !HIDDEN_COLUMNS.has(k));
+  }
+
+  const cols: string[] = [];
+  // Add ordered columns first
+  for (const col of desiredOrder) {
+    if (col in row) cols.push(col);
+  }
+  // Add extras
+  for (const key of Object.keys(row)) {
+    if (!cols.includes(key) && !HIDDEN_COLUMNS.has(key)) cols.push(key);
+  }
+  return cols;
+}
+
+// Benchmark column color coding
+function getBenchmarkCellClass(columnName: string): string {
+  if (columnName === "Benchmark (Avg)" || columnName === "Industry Benchmark") {
+    return "bg-yellow-50 text-yellow-800";
+  }
+  if (columnName === "Benchmark (Industry Best)") {
+    return "bg-blue-50 text-blue-800";
+  }
+  if (columnName === "Benchmark (Overall Best)") {
+    return "bg-green-50 text-green-800";
+  }
+  return "";
+}
+
+// Strategic theme colors (5 distinct colors for 5 themes)
+const THEME_COLORS = [
+  { bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-700", badge: "bg-indigo-100 text-indigo-700 border-indigo-300" },
+  { bg: "bg-teal-50", border: "border-teal-200", text: "text-teal-700", badge: "bg-teal-100 text-teal-700 border-teal-300" },
+  { bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700", badge: "bg-rose-100 text-rose-700 border-rose-300" },
+  { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", badge: "bg-amber-100 text-amber-700 border-amber-300" },
+  { bg: "bg-cyan-50", border: "border-cyan-200", text: "text-cyan-700", badge: "bg-cyan-100 text-cyan-700 border-cyan-300" },
+];
+
+function getThemeColor(themeIndex: number) {
+  return THEME_COLORS[themeIndex % THEME_COLORS.length];
+}
+
+// Group data by Strategic Theme field
+function groupByStrategicTheme(data: any[]): Map<string, any[]> {
+  const groups = new Map<string, any[]>();
+  const ungrouped: any[] = [];
+
+  for (const row of data) {
+    const theme = row["Strategic Theme"];
+    if (theme) {
+      if (!groups.has(theme)) groups.set(theme, []);
+      groups.get(theme)!.push(row);
+    } else {
+      ungrouped.push(row);
+    }
+  }
+
+  // Add ungrouped items if any
+  if (ungrouped.length > 0) {
+    groups.set("Other", ungrouped);
+  }
+
+  return groups;
+}
+
+// Render a labeled formula component grid
+function renderLabeledFormula(formulaLabels: any, formulaStr: string, colorClass: string): React.ReactNode {
+  if (!formulaLabels || !formulaLabels.components || formulaLabels.components.length === 0) {
+    // Fallback: show raw formula
+    return (
+      <div className={`text-[10px] md:text-sm ${colorClass} font-mono break-all leading-relaxed`}>
+        {formulaStr}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-1 md:gap-2">
+        {formulaLabels.components.map((comp: any, idx: number) => (
+          <React.Fragment key={idx}>
+            {idx > 0 && <span className="text-muted-foreground font-mono text-sm self-end pb-0.5">×</span>}
+            <div className="flex flex-col items-center">
+              <span className="text-[8px] md:text-[10px] text-muted-foreground font-medium mb-0.5 text-center leading-tight">{comp.label}</span>
+              <span className={`text-[10px] md:text-sm ${colorClass} font-mono font-semibold bg-white/60 px-1.5 py-0.5 rounded border`}>
+                {comp.value}
+              </span>
+            </div>
+          </React.Fragment>
+        ))}
+        <span className="text-muted-foreground font-mono text-sm self-end pb-0.5">=</span>
+        <div className="flex flex-col items-center">
+          <span className="text-[8px] md:text-[10px] text-muted-foreground font-medium mb-0.5">Result</span>
+          <span className={`text-[10px] md:text-sm ${colorClass} font-mono font-bold bg-white/80 px-1.5 py-0.5 rounded border-2`}>
+            {formulaLabels.result}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Sanitize text for PDF - remove emojis and fix encoding issues
 const sanitizeForPDF = (text: string): string => {
@@ -1223,9 +1397,11 @@ export default function Report() {
       if (step.data && step.data.length > 0) {
         const isBenefitsStep = step.step === 5;
         const isNarrativeStep = step.step === 1 || step.step === 2 || step.step === 3; // Strategic Anchoring, Business Functions, Friction Points
-        const allColumns = Object.keys(step.data[0]);
+        // Apply column reordering and normalization
+        const reorderedData = reorderAndFilterColumns(step.data, step.step);
+        const allColumns = Object.keys(reorderedData[0]);
         const formulaColumns = allColumns.filter(k => k.includes('Formula'));
-        const displayColumns = allColumns.filter(k => !k.includes('Formula'));
+        const displayColumns = allColumns.filter(k => !k.includes('Formula') && !k.includes('Labels') && !HIDDEN_COLUMNS.has(k));
         
         // Limit columns for board readability - fewer columns for narrative steps
         const maxCols = isNarrativeStep ? 4 : 6;
@@ -1235,7 +1411,7 @@ export default function Report() {
         const cellCharLimit = isNarrativeStep ? 120 : 60;
         const truncationLimit = isNarrativeStep ? 100 : 45;
         
-        const rows = step.data.map((row: any) => 
+        const rows = reorderedData.map((row: any) =>
           limitedColumns.map(col => {
             const val = row[col];
             if (typeof val === 'number' && col.toLowerCase().includes('$')) {
@@ -1596,24 +1772,27 @@ export default function Report() {
       if (step.data && step.data.length > 0) {
         const sheetName = `Step ${step.step}`.substring(0, 31);
         const ws = wb.addWorksheet(sheetName);
-        
+
         // Add header rows
         ws.addRow([`STEP ${step.step}: ${step.title.toUpperCase()}`]);
         ws.addRow([sanitizeForProse(step.content || '')]);
         ws.addRow(['']);
-        
-        // Get all unique column keys from all data rows to handle varying structures
+
+        // Apply column reordering and normalization
+        const reorderedStepData = reorderAndFilterColumns(step.data, step.step);
+
+        // Get all unique column keys from reordered data
         const allKeys = new Set<string>();
-        step.data.forEach((dataRow: any) => {
+        reorderedStepData.forEach((dataRow: any) => {
           Object.keys(dataRow).forEach(key => allKeys.add(key));
         });
-        const cols = Array.from(allKeys);
-        
+        const cols = Array.from(allKeys).filter(k => !HIDDEN_COLUMNS.has(k) && !k.includes('Labels'));
+
         // Add column headers
         ws.addRow(cols);
-        
+
         // Add data rows, preserving native types
-        step.data.forEach((dataRow: any) => {
+        reorderedStepData.forEach((dataRow: any) => {
           const values = cols.map(col => {
             const val = dataRow[col];
             // Handle different value types
@@ -1853,19 +2032,21 @@ export default function Report() {
       }
 
       if (step.data && step.data.length > 0) {
-        const allColumns = Object.keys(step.data[0]);
-        const columns = allColumns.filter(k => !k.includes('Formula')).slice(0, 6);
-        
+        // Apply column reordering and normalization
+        const reorderedDocxData = reorderAndFilterColumns(step.data, step.step);
+        const allColumns = Object.keys(reorderedDocxData[0]);
+        const columns = allColumns.filter(k => !k.includes('Formula') && !k.includes('Labels') && !HIDDEN_COLUMNS.has(k)).slice(0, 6);
+
         const tableRows = [
           new DocxTableRow({
-            children: columns.map(col => 
+            children: columns.map(col =>
               new DocxTableCell({
                 children: [new Paragraph({ text: col, alignment: AlignmentType.CENTER })],
                 shading: { fill: "001278" },
               })
             ),
           }),
-          ...step.data.map((row: any) => 
+          ...reorderedDocxData.map((row: any) =>
             new DocxTableRow({
               children: columns.map(col => {
                 const val = row[col];
@@ -1950,11 +2131,13 @@ export default function Report() {
       }
 
       if (step.data && step.data.length > 0) {
-        const allColumns = Object.keys(step.data[0]);
-        const columns = allColumns.filter(k => !k.includes('Formula')).slice(0, 6);
+        // Apply column reordering and normalization
+        const reorderedMdData = reorderAndFilterColumns(step.data, step.step);
+        const allColumns = Object.keys(reorderedMdData[0]);
+        const columns = allColumns.filter(k => !k.includes('Formula') && !k.includes('Labels') && !HIDDEN_COLUMNS.has(k)).slice(0, 6);
         mdContent += `| ${columns.join(' | ')} |\n`;
         mdContent += `| ${columns.map(() => ':---:').join(' | ')} |\n`;
-        step.data.forEach((row: any) => {
+        reorderedMdData.forEach((row: any) => {
           const values = columns.map(col => {
             const val = row[col];
             // Round hours to whole numbers
@@ -2144,16 +2327,18 @@ export default function Report() {
       }
 
       if (step.data && step.data.length > 0) {
-        const allColumns = Object.keys(step.data[0]);
-        const columns = allColumns.filter(k => !k.includes('Formula')).slice(0, 6);
-        
+        // Apply column reordering and normalization
+        const reorderedHtmlData = reorderAndFilterColumns(step.data, step.step);
+        const allColumns = Object.keys(reorderedHtmlData[0]);
+        const columns = allColumns.filter(k => !k.includes('Formula') && !k.includes('Labels') && !HIDDEN_COLUMNS.has(k)).slice(0, 6);
+
         html += `        <table>
           <thead>
             <tr>${columns.map(c => `<th>${c}</th>`).join('')}</tr>
           </thead>
           <tbody>
 `;
-        step.data.forEach((row: any, idx: number) => {
+        reorderedHtmlData.forEach((row: any, idx: number) => {
           html += `            <tr>${columns.map(c => {
             const val = row[c];
             // Format hours as whole numbers
@@ -3370,16 +3555,19 @@ function StepCard({ step }: { step: any }) {
           </div>
         )}
         
-        {hasData && isBenefitsStep ? (
+        {hasData && isBenefitsStep ? (() => {
+          // Get visible (non-formula, non-label) columns for benefits table
+          const benefitsVisibleCols = Object.keys(step.data[0]).filter((k: string) =>
+            !k.includes('Formula') && !k.includes('Labels') && k !== 'Benefit Formula' && k !== 'Strategic Theme'
+          );
+          return (
           <div className="rounded-md border overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-6 md:w-8 px-1 md:px-2"></TableHead>
-                    {Object.keys(step.data[0]).filter((k: string) => 
-                      !k.includes('Formula') && k !== 'Benefit Formula'
-                    ).map((key: string, i: number) => (
+                    {benefitsVisibleCols.map((key: string, i: number) => (
                       <TableHead key={i} className="font-semibold text-primary whitespace-nowrap text-xs md:text-sm px-2 md:px-4 py-2 md:py-3">{key}</TableHead>
                     ))}
                   </TableRow>
@@ -3387,7 +3575,7 @@ function StepCard({ step }: { step: any }) {
                 <TableBody>
                   {step.data.map((row: any, i: number) => {
                     const isExpanded = expandedRows.has(i);
-                    const colCount = Object.keys(row).filter(k => !k.includes('Formula')).length + 1;
+                    const colCount = benefitsVisibleCols.length + 1;
                     
                     return (
                       <React.Fragment key={i}>
@@ -3404,11 +3592,9 @@ function StepCard({ step }: { step: any }) {
                               )}
                             </div>
                           </TableCell>
-                          {Object.entries(row).filter(([key]) => 
-                            !key.includes('Formula') && key !== 'Benefit Formula'
-                          ).map(([key, value]: [string, any], j: number) => (
+                          {benefitsVisibleCols.map((key: string, j: number) => (
                             <TableCell key={j} className={`text-xs md:text-sm px-2 md:px-4 py-1.5 md:py-2 ${j === 0 ? "font-medium" : ""}`}>
-                              {renderCellValue(key, value)}
+                              {renderCellValue(key, row[key])}
                             </TableCell>
                           ))}
                         </TableRow>
@@ -3417,7 +3603,7 @@ function StepCard({ step }: { step: any }) {
                             <TableCell colSpan={colCount} className="py-2 md:py-4">
                               <div className="flex flex-col gap-2 md:gap-4 px-1 md:px-4">
                                 <div className="text-xs md:text-sm font-medium text-primary">Benefit Calculation Breakdown by Driver:</div>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                                   {/* Revenue Driver */}
                                   <div className="p-3 md:p-4 bg-green-50 rounded-lg border border-green-200">
@@ -3430,18 +3616,16 @@ function StepCard({ step }: { step: any }) {
                                         {row['Revenue Benefit ($)'] || '$0'}
                                       </div>
                                     </div>
-                                    {row['Revenue Formula'] ? (
+                                    {row['Revenue Formula'] && !row['Revenue Formula'].toLowerCase().includes('no ') ? (
                                       <div className="bg-white/80 rounded-md p-2 md:p-3 border border-green-200">
-                                        <div className="text-[9px] md:text-xs text-green-600 font-medium mb-1">Calculation:</div>
-                                        <div className="text-[10px] md:text-sm text-green-800 font-mono break-all leading-relaxed">
-                                          {row['Revenue Formula']}
-                                        </div>
+                                        <div className="text-[9px] md:text-xs text-green-600 font-medium mb-1.5">Calculation:</div>
+                                        {renderLabeledFormula(row['Revenue Formula Labels'], row['Revenue Formula'], 'text-green-800')}
                                       </div>
                                     ) : (
                                       <div className="text-[10px] md:text-xs text-green-600 italic">No revenue impact for this use case</div>
                                     )}
                                   </div>
-                                  
+
                                   {/* Cost Driver */}
                                   <div className="p-3 md:p-4 bg-blue-50 rounded-lg border border-blue-200">
                                     <div className="flex items-center justify-between mb-2 md:mb-3">
@@ -3453,89 +3637,72 @@ function StepCard({ step }: { step: any }) {
                                         {row['Cost Benefit ($)'] || '$0'}
                                       </div>
                                     </div>
-                                    {row['Cost Formula'] ? (
+                                    {row['Cost Formula'] && !row['Cost Formula'].toLowerCase().includes('no ') ? (
                                       <div className="bg-white/80 rounded-md p-2 md:p-3 border border-blue-200">
-                                        <div className="text-[9px] md:text-xs text-blue-600 font-medium mb-1">Calculation:</div>
-                                        <div className="text-[10px] md:text-sm text-blue-800 font-mono break-all leading-relaxed">
-                                          {row['Cost Formula']}
-                                        </div>
+                                        <div className="text-[9px] md:text-xs text-blue-600 font-medium mb-1.5">Calculation:</div>
+                                        {renderLabeledFormula(row['Cost Formula Labels'], row['Cost Formula'], 'text-blue-800')}
                                       </div>
                                     ) : (
                                       <div className="text-[10px] md:text-xs text-blue-600 italic">No cost impact for this use case</div>
                                     )}
                                   </div>
-                                  
+
                                   {/* Cash Flow Driver */}
                                   <div className="p-3 md:p-4 bg-purple-50 rounded-lg border border-purple-200">
                                     <div className="flex items-center justify-between mb-2 md:mb-3">
                                       <div className="flex items-center gap-2">
                                         <DollarSign className="h-4 w-4 md:h-5 md:w-5 text-purple-600" />
-                                        <span className="font-semibold text-purple-700 text-xs md:text-sm">Cash Flow</span>
+                                        <span className="font-semibold text-purple-700 text-xs md:text-sm">Increase Cash Flow</span>
                                       </div>
                                       <div className="text-sm md:text-xl font-bold text-purple-800 bg-purple-100 px-2 md:px-3 py-1 rounded-md border border-purple-300">
                                         {row['Cash Flow Benefit ($)'] || '$0'}
                                       </div>
                                     </div>
-                                    {row['Cash Flow Formula'] ? (
+                                    {row['Cash Flow Formula'] && !row['Cash Flow Formula'].toLowerCase().includes('no ') ? (
                                       <div className="bg-white/80 rounded-md p-2 md:p-3 border border-purple-200">
-                                        <div className="text-[9px] md:text-xs text-purple-600 font-medium mb-1">Calculation:</div>
-                                        <div className="text-[10px] md:text-sm text-purple-800 font-mono break-all leading-relaxed">
-                                          {row['Cash Flow Formula']}
-                                        </div>
+                                        <div className="text-[9px] md:text-xs text-purple-600 font-medium mb-1.5">Calculation:</div>
+                                        {renderLabeledFormula(row['Cash Flow Formula Labels'], row['Cash Flow Formula'], 'text-purple-800')}
                                       </div>
                                     ) : (
                                       <div className="text-[10px] md:text-xs text-purple-600 italic">No cash flow impact for this use case</div>
                                     )}
                                   </div>
-                                  
+
                                   {/* Risk Driver */}
                                   <div className="p-3 md:p-4 bg-orange-50 rounded-lg border border-orange-200">
                                     <div className="flex items-center justify-between mb-2 md:mb-3">
                                       <div className="flex items-center gap-2">
                                         <ShieldCheck className="h-4 w-4 md:h-5 md:w-5 text-orange-600" />
-                                        <span className="font-semibold text-orange-700 text-xs md:text-sm">Reduce Risk</span>
+                                        <span className="font-semibold text-orange-700 text-xs md:text-sm">Decrease Risk</span>
                                       </div>
                                       <div className="text-sm md:text-xl font-bold text-orange-800 bg-orange-100 px-2 md:px-3 py-1 rounded-md border border-orange-300">
                                         {row['Risk Benefit ($)'] || '$0'}
                                       </div>
                                     </div>
-                                    {row['Risk Formula'] ? (
+                                    {row['Risk Formula'] && !row['Risk Formula'].toLowerCase().includes('no ') ? (
                                       <div className="bg-white/80 rounded-md p-2 md:p-3 border border-orange-200">
-                                        <div className="text-[9px] md:text-xs text-orange-600 font-medium mb-1">Calculation:</div>
-                                        <div className="text-[10px] md:text-sm text-orange-800 font-mono break-all leading-relaxed">
-                                          {row['Risk Formula']}
-                                        </div>
+                                        <div className="text-[9px] md:text-xs text-orange-600 font-medium mb-1.5">Calculation:</div>
+                                        {renderLabeledFormula(row['Risk Formula Labels'], row['Risk Formula'], 'text-orange-800')}
                                       </div>
                                     ) : (
                                       <div className="text-[10px] md:text-xs text-orange-600 italic">No risk impact for this use case</div>
                                     )}
                                   </div>
                                 </div>
-                                
-                                {/* Total Summary with Formula Breakdown */}
-                                <div className="p-3 md:p-4 bg-primary/10 rounded-lg border-2 border-primary">
-                                  <div className="flex items-center justify-between mb-2 md:mb-3">
-                                    <div className="flex items-center gap-2">
-                                      <Target className="h-5 w-5 md:h-6 md:w-6 text-primary" />
-                                      <span className="font-bold text-primary text-sm md:text-base">Total Annual Value</span>
-                                    </div>
-                                    <div className="text-lg md:text-2xl font-bold text-primary bg-white px-3 md:px-4 py-1 md:py-2 rounded-md border-2 border-primary">
-                                      {row['Total Annual Value ($)'] || '$0'}
-                                    </div>
-                                  </div>
-                                  <div className="bg-white/80 rounded-md p-2 md:p-3 border border-primary/30">
-                                    <div className="text-[9px] md:text-xs text-primary/70 font-medium mb-1">How it adds up:</div>
-                                    <div className="text-[10px] md:text-sm text-primary font-mono flex flex-wrap items-center gap-1 md:gap-2">
-                                      <span className="bg-green-100 px-1.5 py-0.5 rounded text-green-800">{row['Revenue Benefit ($)'] || '$0'}</span>
-                                      <span className="text-muted-foreground">+</span>
-                                      <span className="bg-blue-100 px-1.5 py-0.5 rounded text-blue-800">{row['Cost Benefit ($)'] || '$0'}</span>
-                                      <span className="text-muted-foreground">+</span>
-                                      <span className="bg-purple-100 px-1.5 py-0.5 rounded text-purple-800">{row['Cash Flow Benefit ($)'] || '$0'}</span>
-                                      <span className="text-muted-foreground">+</span>
-                                      <span className="bg-orange-100 px-1.5 py-0.5 rounded text-orange-800">{row['Risk Benefit ($)'] || '$0'}</span>
-                                      <span className="text-muted-foreground">=</span>
-                                      <span className="bg-primary/20 px-1.5 py-0.5 rounded text-primary font-bold">{row['Total Annual Value ($)'] || '$0'}</span>
-                                    </div>
+
+                                {/* Total Summary — shown ONCE with color-coded breakdown */}
+                                <div className="bg-white/80 rounded-md p-2 md:p-3 border border-primary/30">
+                                  <div className="text-[10px] md:text-sm text-primary font-mono flex flex-wrap items-center gap-1 md:gap-2">
+                                    <span className="text-xs font-medium text-primary mr-1">Total:</span>
+                                    <span className="bg-green-100 px-1.5 py-0.5 rounded text-green-800">{row['Revenue Benefit ($)'] || '$0'}</span>
+                                    <span className="text-muted-foreground">+</span>
+                                    <span className="bg-blue-100 px-1.5 py-0.5 rounded text-blue-800">{row['Cost Benefit ($)'] || '$0'}</span>
+                                    <span className="text-muted-foreground">+</span>
+                                    <span className="bg-purple-100 px-1.5 py-0.5 rounded text-purple-800">{row['Cash Flow Benefit ($)'] || '$0'}</span>
+                                    <span className="text-muted-foreground">+</span>
+                                    <span className="bg-orange-100 px-1.5 py-0.5 rounded text-orange-800">{row['Risk Benefit ($)'] || '$0'}</span>
+                                    <span className="text-muted-foreground">=</span>
+                                    <span className="bg-primary/20 px-2 py-0.5 rounded text-primary font-bold text-sm">{row['Total Annual Value ($)'] || '$0'}</span>
                                   </div>
                                 </div>
                               </div>
@@ -3548,30 +3715,37 @@ function StepCard({ step }: { step: any }) {
                 </TableBody>
               </Table>
             </div>
-          </div>
-        ) : hasData && isFrictionStep ? (
+          </div>);
+        })()
+        : hasData && isFrictionStep ? (() => {
+          // Use column ordering for friction step
+          const frictionReordered = reorderAndFilterColumns(step.data, 3);
+          const frictionVisibleCols = frictionReordered.length > 0
+            ? Object.keys(frictionReordered[0]).filter((k: string) => !k.includes('Formula') && k !== 'Annual Hours' && k !== 'Hourly Rate' && k !== 'Strategic Theme')
+            : [];
+          return (
           <div className="rounded-md border overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-6 md:w-8 px-1 md:px-2"></TableHead>
-                    {Object.keys(step.data[0]).filter((k: string) => 
-                      !k.includes('Formula') && k !== 'Annual Hours' && k !== 'Hourly Rate'
-                    ).map((key: string, i: number) => (
+                    {frictionVisibleCols.map((key: string, i: number) => (
                       <TableHead key={i} className="font-semibold text-primary whitespace-nowrap text-xs md:text-sm px-2 md:px-4 py-2 md:py-3">{key}</TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {step.data.map((row: any, i: number) => {
+                  {frictionReordered.map((row: any, i: number) => {
                     const isExpanded = expandedRows.has(i);
-                    const colCount = Object.keys(row).filter(k => !k.includes('Formula') && k !== 'Annual Hours' && k !== 'Hourly Rate').length + 1;
+                    const colCount = frictionVisibleCols.length + 1;
                     const severityColors = getSeverityColor(row['Severity']);
-                    
+                    // Get the original row for formula/hours data
+                    const originalRow = step.data[i];
+
                     return (
                       <React.Fragment key={i}>
-                        <TableRow 
+                        <TableRow
                           className="hover:bg-muted/20 transition-colors cursor-pointer"
                           onClick={() => toggleRow(i)}
                         >
@@ -3584,16 +3758,14 @@ function StepCard({ step }: { step: any }) {
                               )}
                             </div>
                           </TableCell>
-                          {Object.entries(row).filter(([key]) => 
-                            !key.includes('Formula') && key !== 'Annual Hours' && key !== 'Hourly Rate'
-                          ).map(([key, value]: [string, any], j: number) => (
+                          {frictionVisibleCols.map((key: string, j: number) => (
                             <TableCell key={j} className={`text-xs md:text-sm px-2 md:px-4 py-1.5 md:py-2 ${j === 0 ? "font-medium" : ""}`}>
                               {key === 'Severity' ? (
                                 <Badge className={`${severityColors.bg} ${severityColors.text} ${severityColors.border} border text-[10px] md:text-xs`}>
-                                  {value || 'Low'}
+                                  {row[key] || 'Low'}
                                 </Badge>
                               ) : (
-                                renderCellValue(key, value)
+                                renderCellValue(key, row[key])
                               )}
                             </TableCell>
                           ))}
@@ -3603,7 +3775,7 @@ function StepCard({ step }: { step: any }) {
                             <TableCell colSpan={colCount} className="py-2 md:py-4">
                               <div className="flex flex-col gap-2 md:gap-4 px-1 md:px-4">
                                 <div className="text-xs md:text-sm font-medium text-amber-700">Friction Cost Calculation:</div>
-                                
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                                   <div className="p-3 md:p-4 bg-white rounded-lg border border-amber-200">
                                     <div className="flex items-center justify-between mb-2 md:mb-3">
@@ -3612,30 +3784,30 @@ function StepCard({ step }: { step: any }) {
                                         <span className="font-semibold text-amber-700 text-xs md:text-sm">Annual Cost</span>
                                       </div>
                                       <div className="text-sm md:text-xl font-bold text-amber-800 bg-amber-100 px-2 md:px-3 py-1 rounded-md border border-amber-300">
-                                        {row['Estimated Annual Cost ($)'] || '$0'}
+                                        {(originalRow || row)['Estimated Annual Cost ($)'] || '$0'}
                                       </div>
                                     </div>
-                                    {row['Cost Formula'] ? (
+                                    {(originalRow || row)['Cost Formula'] ? (
                                       <div className="bg-amber-50/80 rounded-md p-2 md:p-3 border border-amber-200">
                                         <div className="text-[9px] md:text-xs text-amber-600 font-medium mb-1">Calculation:</div>
                                         <div className="text-[10px] md:text-sm text-amber-800 font-mono break-all leading-relaxed">
-                                          {row['Cost Formula']}
+                                          {(originalRow || row)['Cost Formula']}
                                         </div>
                                       </div>
                                     ) : (
                                       <div className="text-[10px] md:text-xs text-amber-600 italic">No formula available</div>
                                     )}
                                   </div>
-                                  
+
                                   <div className="p-3 md:p-4 bg-white rounded-lg border border-gray-200">
                                     <div className="text-xs md:text-sm font-medium text-gray-700 mb-2">Calculation Inputs</div>
                                     <div className="grid grid-cols-2 gap-2 text-xs md:text-sm">
                                       <div className="text-gray-500">Annual Hours:</div>
-                                      <div className="font-medium">{typeof row['Annual Hours'] === 'number' ? Math.round(row['Annual Hours']).toLocaleString() : row['Annual Hours'] || 'N/A'}</div>
+                                      <div className="font-medium">{typeof (originalRow || row)['Annual Hours'] === 'number' ? Math.round((originalRow || row)['Annual Hours']).toLocaleString() : (originalRow || row)['Annual Hours'] || 'N/A'}</div>
                                       <div className="text-gray-500">Loaded Hourly Rate:</div>
-                                      <div className="font-medium">${typeof row['Hourly Rate'] === 'number' ? row['Hourly Rate'] : row['Hourly Rate'] || 'N/A'}/hr</div>
+                                      <div className="font-medium">${typeof (originalRow || row)['Hourly Rate'] === 'number' ? (originalRow || row)['Hourly Rate'] : (originalRow || row)['Hourly Rate'] || 'N/A'}/hr</div>
                                       <div className="text-gray-500">Primary Driver:</div>
-                                      <div className="font-medium">{row['Primary Driver Impact'] || 'Cost'}</div>
+                                      <div className="font-medium">{(originalRow || row)['Primary Driver Impact'] || row['Primary Driver Impact'] || 'Cost'}</div>
                                     </div>
                                   </div>
                                 </div>
@@ -3649,36 +3821,98 @@ function StepCard({ step }: { step: any }) {
                 </TableBody>
               </Table>
             </div>
-          </div>
-        ) : hasData ? (
-          <div className="rounded-md border overflow-hidden">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    {Object.keys(step.data[0]).map((key: string, i: number) => (
-                      <TableHead key={i} className="font-semibold text-primary whitespace-nowrap text-xs md:text-sm px-2 md:px-4 py-2 md:py-3">{key}</TableHead>
+          </div>);
+        })()
+        : hasData ? (() => {
+          // ===== GENERIC TABLE WITH COLUMN REORDERING + BENCHMARK COLORS + STRATEGIC THEME GROUPING =====
+          const reorderedData = reorderAndFilterColumns(step.data, step.step);
+          const visibleCols = reorderedData.length > 0
+            ? Object.keys(reorderedData[0]).filter(k => !HIDDEN_COLUMNS.has(k) && k !== 'Strategic Theme')
+            : [];
+          const hasStrategicThemes = reorderedData.some(r => r['Strategic Theme']);
+          const isBenchmarkStep = step.step === 2;
+
+          // Group by strategic theme if available
+          const themeGroups = hasStrategicThemes ? groupByStrategicTheme(reorderedData) : null;
+          const themeNames = themeGroups ? Array.from(themeGroups.keys()) : [];
+
+          const renderTableForRows = (rows: any[]) => (
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50">
+                  {visibleCols.map((key: string, i: number) => (
+                    <TableHead
+                      key={i}
+                      className={`font-semibold text-primary whitespace-nowrap text-xs md:text-sm px-2 md:px-4 py-2 md:py-3 ${getBenchmarkCellClass(key)}`}
+                    >
+                      {key}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row: any, i: number) => (
+                  <TableRow key={i} className="hover:bg-muted/20 transition-colors">
+                    {visibleCols.map((key: string, j: number) => (
+                      <TableCell
+                        key={j}
+                        className={`text-xs md:text-sm px-2 md:px-4 py-1.5 md:py-2 ${j === 0 ? "font-medium" : ""} ${key.toLowerCase() === "description" ? "min-w-[200px] md:min-w-[300px] max-w-[300px] md:max-w-[400px] whitespace-normal" : ""} ${getBenchmarkCellClass(key)}`}
+                      >
+                        {renderCellValue(key, row[key])}
+                      </TableCell>
                     ))}
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {step.data.map((row: any, i: number) => (
-                    <TableRow key={i} className="hover:bg-muted/20 transition-colors">
-                      {Object.entries(row).map(([key, value]: [string, any], j: number) => (
-                        <TableCell 
-                          key={j} 
-                          className={`text-xs md:text-sm px-2 md:px-4 py-1.5 md:py-2 ${j === 0 ? "font-medium" : ""} ${key.toLowerCase() === "description" ? "min-w-[200px] md:min-w-[300px] max-w-[300px] md:max-w-[400px] whitespace-normal" : ""}`}
-                        >
-                          {renderCellValue(key, value)}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        ) : null}
+                ))}
+              </TableBody>
+            </Table>
+          );
+
+          return (
+          <div className="space-y-3">
+            {/* Benchmark legend for Step 2 */}
+            {isBenchmarkStep && reorderedData.some(r => r['Benchmark (Avg)'] || r['Benchmark (Industry Best)'] || r['Benchmark (Overall Best)']) && (
+              <div className="flex flex-wrap items-center gap-3 text-xs px-1">
+                <span className="font-medium text-muted-foreground">Benchmark Legend:</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-100 border border-yellow-300"></span> Industry Average</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-300"></span> Industry Best in Class</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 border border-green-300"></span> Overall Best in Class</span>
+              </div>
+            )}
+
+            {/* Grouped by strategic theme if available */}
+            {themeGroups && themeNames.length > 1 ? (
+              <Accordion type="multiple" defaultValue={themeNames} className="space-y-2">
+                {themeNames.map((themeName, themeIdx) => {
+                  const themeRows = themeGroups.get(themeName) || [];
+                  const themeColor = getThemeColor(themeIdx);
+                  return (
+                    <AccordionItem key={themeName} value={themeName} className={`border rounded-lg ${themeColor.border}`}>
+                      <AccordionTrigger className={`px-3 py-2 text-sm font-semibold ${themeColor.text} ${themeColor.bg} rounded-t-lg hover:no-underline`}>
+                        <div className="flex items-center gap-2">
+                          <Target className="h-4 w-4" />
+                          <span>{themeName}</span>
+                          <Badge variant="outline" className={`ml-2 text-[10px] ${themeColor.badge}`}>{themeRows.length} items</Badge>
+                        </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="p-0">
+                        <div className="overflow-x-auto">
+                          {renderTableForRows(themeRows)}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            ) : (
+              <div className="rounded-md border overflow-hidden">
+                <div className="overflow-x-auto">
+                  {renderTableForRows(reorderedData)}
+                </div>
+              </div>
+            )}
+          </div>);
+        })()
+        : null}
       </CardContent>
     </Card>
   );

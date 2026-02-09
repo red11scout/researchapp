@@ -333,13 +333,14 @@ Remove: "It's important to note..." / "This section examines..." / "The followin
 </voice_and_tone>
 
 <ai_primitives>
-Map all use cases to these six capabilities:
-1. Research & Information Retrieval (RAG, semantic search, multi-source synthesis)
-2. Content Creation (documents, reports, communications, template-based generation)
-3. Data Analysis (pattern recognition, anomaly detection, classification)
-4. Conversational Interfaces (multi-turn dialogue, intent routing, voice/text)
-5. Workflow Automation (agentic orchestration, tool use, conditional logic)
-6. Coding Assistance (generation, documentation, refactoring, legacy modernization)
+Map all use cases to these six STANDARDIZED capabilities. Use ONLY these exact labels:
+1. Research & Information Retrieval — RAG, semantic search, multi-source synthesis, knowledge lookup, document discovery
+2. Content Creation — documents, reports, communications, template-based generation, product descriptions
+3. Data Analysis — pattern recognition, anomaly detection, classification, extraction, scoring, forecasting, prediction
+4. Conversational Interfaces — multi-turn dialogue, intent routing, voice/text, chatbots, virtual assistants
+5. Workflow Automation — agentic orchestration, tool use, conditional logic, process automation, routing, approval flows
+6. Coding Assistance — code generation, documentation, refactoring, legacy modernization, test generation
+List 2-3 most relevant primitives per use case, separated by commas. Use the EXACT names above.
 </ai_primitives>
 
 <business_value_drivers>
@@ -480,52 +481,68 @@ FORMATTING RULES:
 - Active voice only
 
 STEP 1: STRATEGIC ANCHORING & BUSINESS DRIVERS
-- Map 5 strategic themes to business drivers
-- Define current state → target state for each
+- Map EXACTLY 5 strategic themes to business drivers, ranked by total financial impact (highest first)
+- Define current state → target state for each with quantified metrics
 - Ground in specific P&L/balance sheet lines
-Table columns: Strategic Theme, Primary Driver, Secondary Driver, Current State, Target State
+- Each theme must span 2-3 business functions and map to 2-4 use cases
+- Financially quantify each theme (sum of associated use case benefits)
+- These 5 themes are the CONNECTIVE TISSUE for the entire report — every item in Steps 2-7 must link back to one of these themes
+Table columns: Strategic Theme, Current State, Target State, Primary Driver, Secondary Driver
 
 STEP 2: BUSINESS FUNCTION INVENTORY & KPI BASELINES
 - 10-12 critical functions with KPI baselines
-- Use industry benchmarks if company-specific unavailable
+- Each KPI must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
+- Provide THREE benchmark tiers for each KPI:
+  * "Benchmark (Avg)" — Industry average for this KPI among peers
+  * "Benchmark (Industry Best)" — Top quartile / best-in-class within the specific industry
+  * "Benchmark (Overall Best)" — Best-of-breed across ALL industries for this business function
+  Include the numeric value and a brief source/context label (e.g., "82% (top quartile retail)")
 - Mark extrapolated data as [ESTIMATED]
-Table columns: Function, Sub-Function, KPI Name, Baseline Value, Industry Benchmark, Target Value, Direction (↑/↓), Timeframe, Measurement Method
+- FUNCTION/SUB-FUNCTION CONSTRAINT: You MUST use Function and Sub-Function values from the standardized taxonomy provided. Map company-specific terminology to the nearest canonical function. Standard functions include: Sales, Marketing, Finance, Operations, Human Resources, Information Technology, Customer Service, Legal & Compliance, Supply Chain, Product Management, Digital Commerce, Merchandising, Logistics. Each has defined Sub-Functions — use only those sub-function labels.
+Table columns: KPI Name, Function, Sub-Function, Baseline Value, Direction (↑/↓), Target Value, Benchmark (Avg), Benchmark (Industry Best), Benchmark (Overall Best), Timeframe, Strategic Theme
 
 STEP 3: FRICTION POINT MAPPING
 - 10-12 operational bottlenecks
 - Quantify annual cost using fully-loaded labor rates
 - Rate severity: Critical/High/Medium
-Table columns: Function, Sub-Function, Friction Point, Severity (Critical/High/Medium), Primary Driver Impact, Estimated Annual Cost ($)
+- Each friction point must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
+- FUNCTION/SUB-FUNCTION CONSTRAINT: Use the SAME standardized Function and Sub-Function labels as Step 2. The Function/Sub-Function for a friction point MUST correspond to a Function/Sub-Function that has a KPI in Step 2.
+Table columns: Friction Point, Function, Sub-Function, Estimated Annual Cost ($), Severity (Critical/High/Medium), Primary Driver Impact, Strategic Theme
 
 STEP 4: AI USE CASE GENERATION
 Generate EXACTLY 10 use cases that:
 ✓ RESHAPE business processes (not just accelerate)
-✓ Map to 2-3 AI primitives
+✓ Map to 2-3 AI primitives using ONLY the 6 standardized labels: Research & Information Retrieval, Content Creation, Data Analysis, Conversational Interfaces, Workflow Automation, Coding Assistance
 ✓ Target specific friction points from Step 3
 ✓ Include mandatory Human-in-the-Loop checkpoints
 ✓ Span minimum 5 different business functions
 ✓ Prioritize back-office over customer-facing
-Table columns: ID, Use Case Name, Function, Sub-Function, AI Primitives, Description, Target Friction, Human-in-the-Loop Checkpoint
+✓ Each use case must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
+✓ FUNCTION/SUB-FUNCTION CONSTRAINT: Use the SAME standardized Function and Sub-Function labels as Steps 2 and 3. The Function/Sub-Function for a use case MUST match the friction point it targets.
+Table columns: ID, Use Case Name, Description, Target Friction, AI Primitives, Human-in-the-Loop Checkpoint, Function, Sub-Function, Strategic Theme
 
 STEP 5: BENEFITS QUANTIFICATION BY DRIVER
 - Calculate across all 4 drivers with EXPLICIT FORMULAS showing × symbols
 - Apply ALL conservative reductions (Revenue ×0.95, Cost ×0.90, Cash Flow ×0.85, Risk ×0.80)
 - Apply data maturity adjustment (×0.75 default)
 - Round DOWN to nearest $100K
-Table columns: ID, Use Case, Revenue Benefit ($), Revenue Formula, Cost Benefit ($), Cost Formula, Cash Flow Benefit ($), Cash Flow Formula, Risk Benefit ($), Risk Formula, Total Annual Value ($), Probability of Success (0-1)
+- Each use case must include a "Strategic Theme" column linking to Step 1
+Table columns: ID, Use Case, Revenue Benefit ($), Revenue Formula, Cost Benefit ($), Cost Formula, Cash Flow Benefit ($), Cash Flow Formula, Risk Benefit ($), Risk Formula, Total Annual Value ($), Probability of Success (0-1), Strategic Theme
 
 CRITICAL - Each formula MUST show the calculation with × symbols:
 - "Revenue Formula": Example: "15% lift × $190M pipeline × 0.95 × 0.75 = $20.3M"
-- "Cost Formula": Example: "2.5 FTE × $85K × 0.90 × 0.75 = $14.3M"
-- "Cash Flow Formula": Example: "$500M revenue × (12 / 365) × 8% WACC × 0.85 × 0.75 = $200K"
+- "Cost Formula": Example: "28,000 hours × $150/hr × 1.35 × 0.90 × 0.75 = $3.8M"
+- "Cash Flow Formula": Example: "$500M revenue × (12 / 365) × 0.08 × 0.85 × 0.75 = $200K"
 - "Risk Formula": Example: "15% reduction × $6M exposure × 0.80 × 0.75 = $540K"
+NOTE: Do NOT repeat the result after an arrow (→). Show only: "formula = $result". Not "formula = $result → $result".
 
 STEP 6: EFFORT & TOKEN MODELING
 - Score 1-5: Data Readiness, Integration Complexity, Change Management
 - Estimate monthly runs and token consumption
 - Round UP time-to-value estimates
 - Flag prerequisite work NOT in timeline
-Table columns: ID, Use Case, Data Readiness (1-5), Integration Complexity (1-5), Change Mgmt (1-5), Effort Score (1-5), Time-to-Value (months), Input Tokens/Run, Output Tokens/Run, Runs/Month, Monthly Tokens, Annual Token Cost ($)
+- Each use case must include a "Strategic Theme" column linking to Step 1
+Table columns: ID, Use Case, Data Readiness (1-5), Integration Complexity (1-5), Effort Score (1-5), Change Mgmt (1-5), Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost ($), Time-to-Value (months), Strategic Theme
 (Use $3 per 1M input tokens, $15 per 1M output tokens for Claude pricing)
 
 STEP 7: PRIORITY SCORING & ROADMAP
@@ -534,7 +551,8 @@ Formula: Priority = (Value_Score × 0.40) + (TTV_Score × 0.30) + (Effort_Score 
 - TTV Score: Inverse (6 mo = 30pts, 18 mo = 5pts)
 - Effort Score: Inverse (Effort 1 = 30pts, Effort 5 = 6pts)
 Tiers: Critical (>75), High (60-74), Medium (45-59)
-Table columns: ID, Use Case, Value Score (0-40), TTV Score (0-30), Effort Score (0-30), Priority Score (0-100), Priority Tier (Critical/High/Medium), Recommended Phase (Q1/Q2/Q3/Q4)
+- Each use case must include a "Strategic Theme" column linking to Step 1
+Table columns: ID, Use Case, Value Score (0-40), TTV Score (0-30), Effort Score (0-30), Priority Score (0-100), Priority Tier (Critical/High/Medium), Recommended Phase (Q1/Q2/Q3/Q4), Strategic Theme
 </output_methodology>
 
 <quality_gates>
