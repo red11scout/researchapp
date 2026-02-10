@@ -280,7 +280,7 @@ const StickyHeader = ({ clientName, onShareUrl, onViewHTMLReport }: StickyHeader
     >
       <div className="max-w-[1600px] mx-auto px-3 md:px-6 flex justify-between items-center">
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="font-bold text-xl md:text-2xl tracking-tighter text-[#0339AF]">BlueAlly</div>
+          <img src="https://www.blueally.com/wp-content/uploads/2023/11/blue-header-logo.png" alt="BlueAlly" className="h-8 md:h-10 w-auto" />
           <div className="h-6 w-px bg-gray-300 hidden md:block"></div>
           <div className="text-gray-500 font-medium hidden md:block">{clientName} Assessment</div>
         </div>
@@ -961,7 +961,10 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
 
       <footer className="bg-slate-900 text-slate-500 py-8 md:py-12 border-t border-slate-800">
         <div className="max-w-[1600px] mx-auto px-4 md:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="text-xs md:text-sm text-center md:text-left">&copy; {new Date().getFullYear()} BlueAlly. Confidential &amp; Proprietary.</div>
+          <div className="flex items-center gap-3 text-center md:text-left">
+            <img src="https://www.blueally.com/wp-content/uploads/2023/11/header-logo.png" alt="BlueAlly" className="h-6 w-auto" />
+            <span className="text-xs md:text-sm">&copy; {new Date().getFullYear()} BlueAlly. Confidential &amp; Proprietary.</span>
+          </div>
           <div className="flex gap-4 md:gap-6">
             <a href="#" className="hover:text-white transition-colors text-sm">Privacy</a>
             <a href="#" className="hover:text-white transition-colors text-sm">Terms</a>

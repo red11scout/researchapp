@@ -1,5 +1,5 @@
 import type { DashboardData, KPI, MatrixDataPoint, UseCase, ValueInsight } from "@/components/Dashboard";
-import { format } from "@/lib/formatters";
+import { format, parseFormattedValue } from "@/lib/formatters";
 
 // Sanitize text to remove markdown artifacts and ensure professional prose
 function sanitizeForProse(text: string): string {
@@ -218,12 +218,12 @@ function extractScenarioComparison(analysisData: ReportAnalysisData): {
       result[key] = {
         annualBenefit: formatValue(
           typeof scenario.annualBenefit === 'string'
-            ? parseFloat(scenario.annualBenefit.replace(/[$,]/g, ''))
+            ? parseFormattedValue(scenario.annualBenefit)
             : scenario.annualBenefit
         ),
         npv: formatValue(
           typeof scenario.npv === 'string'
-            ? parseFloat(scenario.npv.replace(/[$,]/g, ''))
+            ? parseFormattedValue(scenario.npv)
             : scenario.npv
         ),
         paybackMonths: typeof scenario.paybackMonths === 'string'

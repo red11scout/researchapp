@@ -71,9 +71,21 @@ export function generateProfessionalHTMLReport(
     risk: { text: '#6366F1', bg: '#EEF2FF', border: '#C7D2FE' },
   };
 
-  // Intelligent currency formatter
+  // Intelligent currency formatter (handles pre-formatted $XM/$XK/$XB strings)
   const formatCurrency = (value: number | string): string => {
-    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    let numValue: number;
+    if (typeof value === 'number') {
+      numValue = value;
+    } else {
+      const str = String(value).trim();
+      const m = str.match(/^\$?([\d,.]+)\s*([KkMmBb])?/);
+      if (!m) { numValue = 0; }
+      else {
+        const base = parseFloat(m[1].replace(/,/g, ''));
+        const s = m[2]?.toUpperCase();
+        numValue = isNaN(base) ? 0 : s === 'B' ? base * 1e9 : s === 'M' ? base * 1e6 : s === 'K' ? base * 1e3 : base;
+      }
+    }
     if (isNaN(numValue)) return '$0';
 
     if (numValue >= 1_000_000_000) {
@@ -438,7 +450,7 @@ export function generateProfessionalHTMLReport(
                 <td class="font-semibold">${escapeHtml(row['Strategic Theme'] || '')}</td>
                 <td>${escapeHtml(row['Current State'] || '')}</td>
                 <td>${escapeHtml(row['Target State'] || '')}</td>
-                <td><span class="tag tag-blue">${escapeHtml(row['Primary Driver'] || '')}</span></td>
+                <td><span class="tag tag-blue">${escapeHtml(row['Primary Driver Impact'] || row['Primary Driver'] || '')}</span></td>
                 <td>${escapeHtml(row['Secondary Driver'] || '')}</td>
               </tr>
             `
@@ -465,6 +477,7 @@ export function generateProfessionalHTMLReport(
           <table class="data-table compact">
             <thead>
               <tr>
+                <th>Strategic Theme</th>
                 <th>KPI Name</th>
                 <th>Function</th>
                 <th>Sub-Function</th>
@@ -474,7 +487,6 @@ export function generateProfessionalHTMLReport(
                 <th>Industry Best</th>
                 <th>Overall Best</th>
                 <th>Timeframe</th>
-                <th>Strategic Theme</th>
               </tr>
             </thead>
             <tbody>
@@ -482,6 +494,7 @@ export function generateProfessionalHTMLReport(
                 .map(
                   (row: any) => `
               <tr>
+                <td>${escapeHtml(row['Strategic Theme'] || '')}</td>
                 <td class="font-medium">${escapeHtml(row['KPI Name'] || '')}</td>
                 <td>${escapeHtml(row['Function'] || '')}</td>
                 <td>${escapeHtml(row['Sub-Function'] || '')}</td>
@@ -491,7 +504,6 @@ export function generateProfessionalHTMLReport(
                 <td class="muted">${escapeHtml(row['Benchmark (Industry Best)'] || '')}</td>
                 <td class="muted">${escapeHtml(row['Benchmark (Overall Best)'] || '')}</td>
                 <td>${escapeHtml(row['Timeframe'] || '')}</td>
-                <td>${escapeHtml(row['Strategic Theme'] || '')}</td>
               </tr>
             `
                 )
@@ -530,8 +542,15 @@ export function generateProfessionalHTMLReport(
       .map((theme) => {
         const themeRows = groupedByTheme[theme];
         const themeCost = themeRows.reduce((sum: number, row: any) => {
-          const cost = parseFloat(String(row['Estimated Annual Cost ($)'] || 0).replace(/[^\d.-]/g, ''));
-          return sum + (isNaN(cost) ? 0 : cost);
+          const costStr = String(row['Estimated Annual Cost ($)'] || '0').trim();
+          const costMatch = costStr.match(/^\$?([\d,.]+)\s*([KkMmBb])?/);
+          let cost = 0;
+          if (costMatch) {
+            const base = parseFloat(costMatch[1].replace(/,/g, ''));
+            const s = costMatch[2]?.toUpperCase();
+            cost = isNaN(base) ? 0 : s === 'B' ? base * 1e9 : s === 'M' ? base * 1e6 : s === 'K' ? base * 1e3 : base;
+          }
+          return sum + cost;
         }, 0);
         totalCost += themeCost;
         const accentColor = themeAccents[themeIdx % themeAccents.length];
@@ -625,7 +644,7 @@ export function generateProfessionalHTMLReport(
                   (row: any) => `
               <tr>
                 <td class="font-semibold">${escapeHtml(row['ID'] || '')}</td>
-                <td class="font-medium">${escapeHtml(row['Use Case Name'] || '')}</td>
+                <td class="font-medium">${escapeHtml(row['Use Case Name'] || row['Use Case'] || '')}</td>
                 <td class="desc-cell">${escapeHtml(row['Description'] || '')}</td>
                 <td class="desc-cell">${escapeHtml(row['Target Friction'] || '')}</td>
                 <td class="desc-cell">${escapeHtml(row['AI Primitives'] || '')}</td>
@@ -749,7 +768,7 @@ export function generateProfessionalHTMLReport(
                   (row: any) => `
               <tr>
                 <td class="font-semibold">${escapeHtml(row['ID'] || '')}</td>
-                <td class="font-medium">${escapeHtml(row['Use Case Name'] || '')}</td>
+                <td class="font-medium">${escapeHtml(row['Use Case'] || row['Use Case Name'] || '')}</td>
                 <td class="text-center">${row['Time-to-Value'] || '–'}</td>
                 <td class="text-center"><span class="score-circle">${row['Data Readiness'] || '–'}</span></td>
                 <td class="text-center"><span class="score-circle">${row['Integration Complexity'] || '–'}</span></td>
@@ -962,10 +981,6 @@ export function generateProfessionalHTMLReport(
     }
 
     .cover-brand {
-      font-size: 32px;
-      font-weight: 700;
-      color: ${colors.primary};
-      letter-spacing: -0.5px;
       margin-bottom: 16px;
     }
 
@@ -1532,9 +1547,6 @@ export function generateProfessionalHTMLReport(
     }
 
     .footer-brand {
-      font-size: 18px;
-      font-weight: 700;
-      color: ${colors.primary};
       margin-bottom: 8px;
     }
 
@@ -1584,7 +1596,7 @@ export function generateProfessionalHTMLReport(
     <!-- Cover Page -->
     <div class="cover-page">
       <div>
-        <div class="cover-brand">BlueAlly</div>
+        <div class="cover-brand"><img src="https://www.blueally.com/wp-content/uploads/2023/11/blue-header-logo.png" alt="BlueAlly" style="height: 40px; width: auto;" /></div>
         <div class="cover-tagline">AI Strategic Assessment</div>
         <div class="cover-divider"></div>
         <div class="cover-title">AI Value Assessment for</div>
@@ -1619,7 +1631,7 @@ export function generateProfessionalHTMLReport(
 
     <!-- Footer -->
     <div class="report-footer">
-      <div class="footer-brand">BlueAlly</div>
+      <div class="footer-brand"><img src="https://www.blueally.com/wp-content/uploads/2023/11/blue-header-logo.png" alt="BlueAlly" style="height: 24px; width: auto;" /></div>
       <div class="footer-text">
         &copy; ${new Date().getFullYear()} BlueAlly. Confidential &amp; Proprietary.<br>
         This assessment contains forward-looking projections and assumptions subject to substantial business and market risks.
