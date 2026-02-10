@@ -734,29 +734,41 @@ const FinancialSensitivityAnalysis = ({ data }: FinancialSensitivityAnalysisProp
     {
       key: 'conservative',
       label: 'Conservative',
-      description: 'Phased adoption with extended implementation',
+      description: 'Cautious estimate accounting for organizational friction and extended timelines.',
+      adoption: '70% of identified use cases',
+      timeline: '18-month ramp with extended learning curve',
+      realization: '75% of projected baseline value',
       bgColor: 'bg-slate-50',
       borderColor: 'border-slate-300',
       textColor: 'text-slate-700',
-      accentColor: '#6B7280',
+      pillColor: 'bg-slate-600',
+      accentColor: '#64748B',
     },
     {
       key: 'moderate',
       label: 'Base Case',
-      description: 'Standard deployment with full integration',
+      description: 'Expected outcome based on standard implementation practices.',
+      adoption: '85% of identified use cases',
+      timeline: '12-month ramp with standard change management',
+      realization: '100% of projected baseline value',
       bgColor: 'bg-blue-50',
       borderColor: 'border-blue-300',
       textColor: 'text-blue-700',
-      accentColor: '#0066CC',
+      pillColor: 'bg-[#0339AF]',
+      accentColor: '#0339AF',
       isHighlight: true,
     },
     {
       key: 'aggressive',
       label: 'Optimistic',
-      description: 'Accelerated rollout with quick wins',
+      description: 'Best-case with strong leadership backing and accelerated adoption.',
+      adoption: '95%+ of identified use cases',
+      timeline: '9-month ramp with strong exec sponsorship',
+      realization: '125% of baseline with network effects',
       bgColor: 'bg-emerald-50',
       borderColor: 'border-emerald-300',
       textColor: 'text-emerald-700',
+      pillColor: 'bg-emerald-600',
       accentColor: '#059669',
     },
   ];
@@ -767,7 +779,7 @@ const FinancialSensitivityAnalysis = ({ data }: FinancialSensitivityAnalysisProp
         <div className="mb-6 md:mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A] mb-2">Financial Sensitivity Analysis</h2>
           <p className="text-gray-600 text-sm md:text-base max-w-2xl">
-            Scenario analysis showing projected outcomes under different implementation approaches
+            This analysis models three adoption scenarios to provide a range of expected outcomes, reflecting different assumptions about organizational readiness and benefit realization.
           </p>
         </div>
 
@@ -785,50 +797,68 @@ const FinancialSensitivityAnalysis = ({ data }: FinancialSensitivityAnalysisProp
                 viewport={{ once: true }}
                 className={`rounded-2xl border-2 p-6 md:p-8 ${scenario.bgColor} ${scenario.borderColor} ${scenario.isHighlight ? 'ring-2 ring-offset-2 ring-blue-400 shadow-lg' : 'shadow-sm'}`}
               >
-                {scenario.isHighlight && (
-                  <div className="mb-4">
-                    <span className="inline-block bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                <div className="flex items-center justify-between mb-4">
+                  <span className={`inline-block ${scenario.pillColor} text-white text-xs font-bold px-3 py-1 rounded-full`}>
+                    {scenario.label}
+                  </span>
+                  {scenario.isHighlight && (
+                    <span className="text-xs font-semibold text-[#0339AF] uppercase tracking-wide">
                       Recommended
                     </span>
-                  </div>
-                )}
+                  )}
+                </div>
 
-                <h3 className={`text-xl md:text-2xl font-bold ${scenario.textColor} mb-1`}>
-                  {scenario.label}
-                </h3>
-                <p className="text-gray-600 text-xs md:text-sm mb-6 md:mb-8">
+                <p className="text-gray-600 text-xs md:text-sm mb-4">
                   {scenario.description}
                 </p>
 
+                {/* Scenario definitions */}
+                <div className="space-y-2 mb-6 md:mb-8">
+                  <div className="flex gap-2 text-xs">
+                    <span className="font-semibold text-gray-500 min-w-[70px]">Adoption:</span>
+                    <span className="text-gray-700">{scenario.adoption}</span>
+                  </div>
+                  <div className="flex gap-2 text-xs">
+                    <span className="font-semibold text-gray-500 min-w-[70px]">Timeline:</span>
+                    <span className="text-gray-700">{scenario.timeline}</span>
+                  </div>
+                  <div className="flex gap-2 text-xs">
+                    <span className="font-semibold text-gray-500 min-w-[70px]">Realization:</span>
+                    <span className="text-gray-700">{scenario.realization}</span>
+                  </div>
+                </div>
+
+                <div className="h-px bg-gray-200 mb-6"></div>
+
                 <div className="space-y-4 md:space-y-6">
                   {/* Annual Benefit */}
-                  <div className="border-b border-gray-200 pb-4 md:pb-6">
+                  <div>
                     <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
                       Annual Benefit
                     </p>
                     <p className={`text-2xl md:text-3xl font-bold ${scenario.textColor}`}>
                       {scenarioData.annualBenefit}
                     </p>
-                    <p className="text-gray-500 text-xs mt-2">
+                    <p className="text-gray-500 text-xs mt-1">
                       Year 1 projected value
                     </p>
                   </div>
 
                   {/* 5-Year NPV */}
-                  <div className="border-b border-gray-200 pb-4 md:pb-6">
+                  <div>
                     <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
                       5-Year NPV
                     </p>
                     <p className={`text-2xl md:text-3xl font-bold ${scenario.textColor}`}>
                       {scenarioData.npv}
                     </p>
-                    <p className="text-gray-500 text-xs mt-2">
+                    <p className="text-gray-500 text-xs mt-1">
                       Net present value at 10% discount
                     </p>
                   </div>
 
                   {/* Payback Period */}
-                  <div className="pb-4 md:pb-6">
+                  <div>
                     <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
                       Payback Period
                     </p>
@@ -838,7 +868,7 @@ const FinancialSensitivityAnalysis = ({ data }: FinancialSensitivityAnalysisProp
                       </p>
                       <p className="text-gray-600 text-sm md:text-base">months</p>
                     </div>
-                    <p className="text-gray-500 text-xs mt-2">
+                    <p className="text-gray-500 text-xs mt-1">
                       Time to return on investment
                     </p>
                   </div>
@@ -918,10 +948,10 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
       <StickyHeader clientName={data.clientName} onShareUrl={onShareUrl} onViewHTMLReport={onViewHTMLReport} />
       <HeroSection data={data.hero} clientName={data.clientName} />
       <ExecutiveSummary data={data.executiveSummary} />
+      {data.scenarioComparison && <FinancialSensitivityAnalysis data={data.scenarioComparison} />}
       <PriorityMatrix data={data.priorityMatrix} />
       <UseCaseCarousel data={data.useCases} clientName={data.clientName} />
       {data.frictionByTheme && <FrictionPoints data={data.frictionByTheme} />}
-      {data.scenarioComparison && <FinancialSensitivityAnalysis data={data.scenarioComparison} />}
       <CTASection
         totalValue={data.hero.totalValue}
         valueSuffix={data.hero.valueSuffix}
@@ -931,7 +961,7 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
 
       <footer className="bg-slate-900 text-slate-500 py-8 md:py-12 border-t border-slate-800">
         <div className="max-w-[1600px] mx-auto px-4 md:px-6 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="text-xs md:text-sm text-center md:text-left">&copy; 2025 BlueAlly. Confidential &amp; Proprietary.</div>
+          <div className="text-xs md:text-sm text-center md:text-left">&copy; {new Date().getFullYear()} BlueAlly. Confidential &amp; Proprietary.</div>
           <div className="flex gap-4 md:gap-6">
             <a href="#" className="hover:text-white transition-colors text-sm">Privacy</a>
             <a href="#" className="hover:text-white transition-colors text-sm">Terms</a>

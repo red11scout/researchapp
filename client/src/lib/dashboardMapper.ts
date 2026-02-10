@@ -182,17 +182,15 @@ function generateValueInsights(dashboard: ReportAnalysisData['executiveDashboard
   ];
 
   for (const p of pillars) {
-    if (p.value > 0) {
-      const pct = totalValue > 0 ? Math.round((p.value / totalValue) * 100) : 0;
-      insights.push({
-        pillar: p.pillar,
-        title: p.title,
-        metric: formatValue(p.value),
-        description: p.descTemplate(pct),
-        pctOfTotal: pct,
-        iconName: p.iconName,
-      });
-    }
+    const pct = totalValue > 0 ? Math.round((p.value / totalValue) * 100) : 0;
+    insights.push({
+      pillar: p.pillar,
+      title: p.title,
+      metric: formatValue(p.value),
+      description: p.descTemplate(pct),
+      pctOfTotal: pct,
+      iconName: p.iconName,
+    });
   }
 
   return insights;
@@ -244,8 +242,8 @@ function extractScenarioComparison(analysisData: ReportAnalysisData): {
 function extractFrictionByTheme(steps: ReportAnalysisData['steps']): Record<string, string[]> | null {
   const frictionData: Record<string, string[]> = {};
 
-  // Look for friction points data (typically in step 7 or a similar step)
-  const frictionStep = steps.find(s => s.step === 7 || s.title?.toLowerCase().includes('friction'));
+  // Look for friction points data in step 3 (friction point mapping) first, then fallback
+  const frictionStep = steps.find(s => s.step === 3) || steps.find(s => s.title?.toLowerCase().includes('friction'));
 
   if (!frictionStep?.data || !Array.isArray(frictionStep.data)) {
     return null;
