@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { ShareModal } from "@/components/dashboard";
+import { ShareModal } from "@/components/dashboard/share-modal";
 
 export default function DashboardPage() {
   const [, params] = useRoute("/dashboard/:reportId");

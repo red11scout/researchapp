@@ -139,6 +139,27 @@ function getQuadrantColor(type: string): string {
   }
 }
 
+function getTierColor(tier: string): string {
+  switch (tier) {
+    case 'Critical': return '#0F172A';
+    case 'High': return BRAND.primary;
+    case 'Medium': return BRAND.accent;
+    case 'Low': return BRAND.gray;
+    default: return BRAND.accent;
+  }
+}
+
+function getPriorityTier(priorityScore: number, effortScore: number): string {
+  // Use priorityScore if available (0-100), otherwise derive from effortScore (1-5)
+  if (priorityScore > 0) {
+    if (priorityScore >= 75) return 'Critical';
+    if (priorityScore >= 60) return 'High';
+    if (priorityScore >= 45) return 'Medium';
+    return 'Low';
+  }
+  return getComplexityLabel(effortScore);
+}
+
 // ============================================================================
 // VALUE DRIVER INSIGHTS: Generate structured insight cards from dashboard data
 // ============================================================================
@@ -432,13 +453,25 @@ export function mapReportToDashboardData(report: Report): DashboardData {
       const businessValueScore = calculateBusinessValueScore(uc.annualValue || 0, maxAnnualValue);
       const type = getQuadrantType(businessValueScore, readinessScore);
 
+      const tier = getPriorityTier(uc.priorityScore || 0, effortScore);
+
       matrixData.push({
         name: uc.useCase,
         x: readinessScore,
         y: businessValueScore,
         z: effortScore,
         type,
-        color: getQuadrantColor(type),
+        color: getTierColor(tier),
+        // Enriched fields for consulting-grade bubble chart
+        timeToValue: details.timeToValue || 6,
+        priorityTier: tier,
+        priorityScore: uc.priorityScore || 0,
+        annualValue: uc.annualValue || 0,
+        dataReadiness,
+        integrationComplexity,
+        changeMgmt,
+        monthlyTokens: details.monthlyTokens || uc.monthlyTokens || 0,
+        description: details.description,
       });
     });
   }

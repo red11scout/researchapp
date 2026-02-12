@@ -1,0 +1,450 @@
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { scaleLinear, scaleSqrt, scaleOrdinal } from 'd3-scale';
+import { Delaunay } from 'd3-delaunay';
+import { format } from '@/lib/formatters';
+import { chartColors } from './chart-config';
+
+interface MatrixDataPoint {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  type: string;
+  color: string;
+  timeToValue?: number;
+  priorityTier?: string;
+  priorityScore?: number;
+  annualValue?: number;
+  dataReadiness?: number;
+  integrationComplexity?: number;
+  changeMgmt?: number;
+  monthlyTokens?: number;
+  description?: string;
+}
+
+interface QuadrantBubbleChartProps {
+  data: MatrixDataPoint[];
+  onBubbleClick?: (point: MatrixDataPoint) => void;
+}
+
+const MARGIN = { top: 30, right: 30, bottom: 50, left: 55 };
+
+const TIER_COLORS = chartColors.tier;
+const QUADRANT_COLORS = chartColors.quadrant;
+
+const QUADRANT_LABELS = [
+  { label: 'Quick Wins', x: 'right', y: 'top', color: QUADRANT_COLORS.quickWin },
+  { label: 'Strategic Bets', x: 'left', y: 'top', color: QUADRANT_COLORS.strategicBet },
+  { label: 'Fill-Ins', x: 'right', y: 'bottom', color: QUADRANT_COLORS.fillIn },
+  { label: 'Reconsider', x: 'left', y: 'bottom', color: QUADRANT_COLORS.reconsider },
+] as const;
+
+function getTierColorValue(tier?: string): string {
+  switch (tier) {
+    case 'Critical': return TIER_COLORS.critical;
+    case 'High': return TIER_COLORS.high;
+    case 'Medium': return TIER_COLORS.medium;
+    case 'Low': return TIER_COLORS.low;
+    default: return TIER_COLORS.medium;
+  }
+}
+
+function getTierBadgeClasses(tier?: string): string {
+  switch (tier) {
+    case 'Critical': return 'bg-slate-900 text-white';
+    case 'High': return 'bg-blue-700 text-white';
+    case 'Medium': return 'bg-blue-400 text-white';
+    case 'Low': return 'bg-slate-400 text-white';
+    default: return 'bg-slate-400 text-white';
+  }
+}
+
+export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChartProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
+  // Responsive sizing via ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const { width } = entries[0].contentRect;
+      // Height scales with width but has min/max
+      const height = Math.max(300, Math.min(560, width * 0.65));
+      setDimensions({ width, height });
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const { width, height } = dimensions;
+
+  // D3 scales
+  const xScale = useMemo(
+    () => scaleLinear().domain([0, 100]).range([MARGIN.left, width - MARGIN.right]),
+    [width]
+  );
+  const yScale = useMemo(
+    () => scaleLinear().domain([0, 100]).range([height - MARGIN.bottom, MARGIN.top]),
+    [height]
+  );
+
+  // TTV bubble sizing: scaleSqrt for area-proportional encoding
+  // Inverted: shorter TTV (faster) → larger bubble
+  const sizeScale = useMemo(() => {
+    const ttvValues = data.map(d => d.timeToValue || 6);
+    const maxTTV = Math.max(...ttvValues, 24);
+    return scaleSqrt()
+      .domain([maxTTV, 1])
+      .range([6, Math.min(36, width / 25)])
+      .clamp(true);
+  }, [data, width]);
+
+  // Voronoi for hover detection
+  const delaunay = useMemo(() => {
+    if (data.length === 0) return null;
+    const points = data.map(d => [xScale(d.x), yScale(d.y)] as [number, number]);
+    return Delaunay.from(points);
+  }, [data, xScale, yScale]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!delaunay || data.length === 0) return;
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    const idx = delaunay.find(mx, my);
+    // Only highlight if cursor is within reasonable distance of bubble
+    const bx = xScale(data[idx].x);
+    const by = yScale(data[idx].y);
+    const dist = Math.sqrt((mx - bx) ** 2 + (my - by) ** 2);
+    const bubbleRadius = sizeScale(data[idx].timeToValue || 6);
+
+    if (dist < bubbleRadius + 40) {
+      setHoveredIndex(idx);
+      setTooltipPos({ x: bx, y: by });
+    } else {
+      setHoveredIndex(null);
+    }
+  }, [delaunay, data, xScale, yScale, sizeScale]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoveredIndex(null);
+  }, []);
+
+  const midX = xScale(50);
+  const midY = yScale(50);
+
+  const hoveredPoint = hoveredIndex !== null ? data[hoveredIndex] : null;
+
+  if (data.length === 0) {
+    return (
+      <div className="h-64 flex items-center justify-center text-slate-400">
+        No matrix data available
+      </div>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <svg
+        width={width}
+        height={height}
+        className="overflow-visible"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+      >
+        {/* Quadrant background fills at 6% opacity */}
+        <rect
+          x={midX} y={MARGIN.top}
+          width={width - MARGIN.right - midX} height={midY - MARGIN.top}
+          fill={QUADRANT_COLORS.quickWin} opacity={0.06}
+        />
+        <rect
+          x={MARGIN.left} y={MARGIN.top}
+          width={midX - MARGIN.left} height={midY - MARGIN.top}
+          fill={QUADRANT_COLORS.strategicBet} opacity={0.06}
+        />
+        <rect
+          x={midX} y={midY}
+          width={width - MARGIN.right - midX} height={height - MARGIN.bottom - midY}
+          fill={QUADRANT_COLORS.fillIn} opacity={0.06}
+        />
+        <rect
+          x={MARGIN.left} y={midY}
+          width={midX - MARGIN.left} height={height - MARGIN.bottom - midY}
+          fill={QUADRANT_COLORS.reconsider} opacity={0.04}
+        />
+
+        {/* Quadrant labels */}
+        <text
+          x={midX + (width - MARGIN.right - midX) / 2}
+          y={MARGIN.top + 18}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={600}
+          fill={QUADRANT_COLORS.quickWin}
+          opacity={0.7}
+        >
+          Quick Wins
+        </text>
+        <text
+          x={MARGIN.left + (midX - MARGIN.left) / 2}
+          y={MARGIN.top + 18}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={600}
+          fill={QUADRANT_COLORS.strategicBet}
+          opacity={0.7}
+        >
+          Strategic Bets
+        </text>
+        <text
+          x={midX + (width - MARGIN.right - midX) / 2}
+          y={height - MARGIN.bottom - 8}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={600}
+          fill={QUADRANT_COLORS.fillIn}
+          opacity={0.7}
+        >
+          Fill-Ins
+        </text>
+        <text
+          x={MARGIN.left + (midX - MARGIN.left) / 2}
+          y={height - MARGIN.bottom - 8}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={600}
+          fill={QUADRANT_COLORS.reconsider}
+          opacity={0.5}
+        >
+          Reconsider
+        </text>
+
+        {/* Midpoint divider lines */}
+        <line
+          x1={midX} y1={MARGIN.top} x2={midX} y2={height - MARGIN.bottom}
+          stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.6}
+        />
+        <line
+          x1={MARGIN.left} y1={midY} x2={width - MARGIN.right} y2={midY}
+          stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.6}
+        />
+
+        {/* X-axis ticks and labels */}
+        {[0, 25, 50, 75, 100].map(v => (
+          <g key={`x-${v}`}>
+            <line
+              x1={xScale(v)} y1={height - MARGIN.bottom}
+              x2={xScale(v)} y2={height - MARGIN.bottom + 5}
+              stroke="#94a3b8"
+            />
+            <text
+              x={xScale(v)} y={height - MARGIN.bottom + 18}
+              textAnchor="middle"
+              fontSize={10}
+              fill="#94a3b8"
+            >
+              {v}
+            </text>
+          </g>
+        ))}
+        <text
+          x={(MARGIN.left + width - MARGIN.right) / 2}
+          y={height - 6}
+          textAnchor="middle"
+          fontSize={12}
+          fontWeight={600}
+          fill="#94a3b8"
+        >
+          Implementation Readiness →
+        </text>
+
+        {/* Y-axis ticks and labels */}
+        {[0, 25, 50, 75, 100].map(v => (
+          <g key={`y-${v}`}>
+            <line
+              x1={MARGIN.left - 5} y1={yScale(v)}
+              x2={MARGIN.left} y2={yScale(v)}
+              stroke="#94a3b8"
+            />
+            <text
+              x={MARGIN.left - 10} y={yScale(v) + 4}
+              textAnchor="end"
+              fontSize={10}
+              fill="#94a3b8"
+            >
+              {v}
+            </text>
+          </g>
+        ))}
+        <text
+          x={14}
+          y={(MARGIN.top + height - MARGIN.bottom) / 2}
+          textAnchor="middle"
+          fontSize={12}
+          fontWeight={600}
+          fill="#94a3b8"
+          transform={`rotate(-90, 14, ${(MARGIN.top + height - MARGIN.bottom) / 2})`}
+        >
+          Strategic Value →
+        </text>
+
+        {/* Axis lines */}
+        <line
+          x1={MARGIN.left} y1={height - MARGIN.bottom}
+          x2={width - MARGIN.right} y2={height - MARGIN.bottom}
+          stroke="#334155" strokeWidth={1}
+        />
+        <line
+          x1={MARGIN.left} y1={MARGIN.top}
+          x2={MARGIN.left} y2={height - MARGIN.bottom}
+          stroke="#334155" strokeWidth={1}
+        />
+
+        {/* Bubbles */}
+        {data.map((point, i) => {
+          const cx = xScale(point.x);
+          const cy = yScale(point.y);
+          const r = sizeScale(point.timeToValue || point.z * 4 || 6);
+          const fillColor = point.priorityTier
+            ? getTierColorValue(point.priorityTier)
+            : point.color;
+          const isHovered = hoveredIndex === i;
+          const isDimmed = hoveredIndex !== null && hoveredIndex !== i;
+
+          return (
+            <motion.circle
+              key={point.name}
+              cx={cx}
+              cy={cy}
+              fill={fillColor}
+              stroke="rgba(255,255,255,0.8)"
+              initial={{ r: 0, opacity: 0 }}
+              animate={{
+                r,
+                opacity: isDimmed ? 0.25 : 0.85,
+                strokeWidth: isHovered ? 2.5 : 1,
+              }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              style={{ cursor: 'pointer' }}
+              onClick={() => onBubbleClick?.(point)}
+            />
+          );
+        })}
+
+        {/* Direct bubble labels (for ≤12 use cases) */}
+        {data.length <= 12 && data.map((point, i) => {
+          const cx = xScale(point.x);
+          const cy = yScale(point.y);
+          const r = sizeScale(point.timeToValue || point.z * 4 || 6);
+          const isDimmed = hoveredIndex !== null && hoveredIndex !== i;
+          const labelText = point.name.length > 22
+            ? point.name.slice(0, 20) + '...'
+            : point.name;
+
+          return (
+            <motion.text
+              key={`label-${point.name}`}
+              x={cx}
+              y={cy - r - 5}
+              textAnchor="middle"
+              fontSize={9}
+              fontWeight={500}
+              fill="#CBD5E1"
+              className="pointer-events-none select-none"
+              animate={{ opacity: isDimmed ? 0.15 : 0.8 }}
+              transition={{ duration: 0.2 }}
+            >
+              {labelText}
+            </motion.text>
+          );
+        })}
+      </svg>
+
+      {/* Tooltip */}
+      <AnimatePresence>
+        {hoveredPoint && hoveredIndex !== null && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute z-50 pointer-events-none"
+            style={{
+              left: tooltipPos.x + (tooltipPos.x > width / 2 ? -260 : 20),
+              top: Math.max(10, tooltipPos.y - 100),
+            }}
+          >
+            <div className="bg-white p-4 rounded-xl shadow-2xl border border-slate-200 text-slate-900 w-[240px]">
+              <p className="font-bold text-sm mb-1 leading-tight">{hoveredPoint.name}</p>
+              {hoveredPoint.priorityTier && (
+                <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 ${getTierBadgeClasses(hoveredPoint.priorityTier)}`}>
+                  {hoveredPoint.priorityTier} Priority
+                </span>
+              )}
+              <div className="h-px bg-slate-100 my-2" />
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+                <div>
+                  <span className="text-slate-400 block">Business Value</span>
+                  <span className="font-semibold text-slate-700">
+                    {hoveredPoint.annualValue ? format.currencyAuto(hoveredPoint.annualValue) : `${hoveredPoint.y}/100`}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Readiness</span>
+                  <span className="font-semibold text-slate-700">{hoveredPoint.x}/100</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Time to Value</span>
+                  <span className="font-semibold text-slate-700">
+                    {hoveredPoint.timeToValue ? format.duration(hoveredPoint.timeToValue) : `Effort ${hoveredPoint.z}/5`}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Priority Score</span>
+                  <span className="font-semibold text-slate-700">
+                    {hoveredPoint.priorityScore ? `${hoveredPoint.priorityScore}/100` : '—'}
+                  </span>
+                </div>
+              </div>
+              {hoveredPoint.description && (
+                <p className="text-[10px] text-slate-500 mt-2 leading-relaxed line-clamp-2">
+                  {hoveredPoint.description}
+                </p>
+              )}
+              <p className="text-[10px] text-slate-300 mt-2 italic">Click for details</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tier legend */}
+      <div className="flex flex-wrap justify-center gap-4 mt-3 text-[11px]">
+        {(['Critical', 'High', 'Medium', 'Low'] as const).map(tier => (
+          <div key={tier} className="flex items-center gap-1.5 text-slate-400">
+            <div
+              className="w-2.5 h-2.5 rounded-full"
+              style={{ backgroundColor: getTierColorValue(tier) }}
+            />
+            {tier}
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5 text-slate-400 ml-2">
+          <svg width="16" height="12" className="text-slate-400">
+            <circle cx="4" cy="6" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
+            <circle cx="11" cy="6" r="5" fill="none" stroke="currentColor" strokeWidth="1" />
+          </svg>
+          Faster TTV = Larger
+        </div>
+      </div>
+    </div>
+  );
+}

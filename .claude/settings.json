@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/drewgodwin/researchapp/.claude/hooks/pre-tool-use.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/drewgodwin/researchapp && npx tsc --noEmit --pretty 2>&1 | tail -30",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import {
-  ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ZAxis, Cell, ReferenceLine, ReferenceArea, Label
-} from 'recharts';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, TrendingUp, Shield, Banknote, Activity,
-  ChevronRight, Clock, Zap, CheckCircle2, Lock, Share2, Download, FileText, Check
+  ChevronRight, Clock, Zap, CheckCircle2, Lock, Share2, Download, FileText, Check,
+  BarChart3, ScatterChart as ScatterIcon, X
 } from 'lucide-react';
 import { format } from '@/lib/formatters';
+import { QuadrantBubbleChart } from '@/components/dashboard/quadrant-bubble-chart';
+import { MatrixScorecard } from '@/components/dashboard/matrix-scorecard';
 
 // Sanitize text to remove markdown artifacts for professional prose display
 function sanitizeForProse(text: string): string {
@@ -92,6 +91,16 @@ interface MatrixDataPoint {
   z: number;  // Effort Score (1-5)
   type: string;  // Quadrant label
   color: string;
+  // Enriched fields for consulting-grade bubble chart (all optional for backward compat)
+  timeToValue?: number;       // months — bubble size via d3.scaleSqrt
+  priorityTier?: string;      // Critical/High/Medium/Low — bubble color
+  priorityScore?: number;     // 0-100 — tooltip detail
+  annualValue?: number;       // raw $ amount — tooltip detail
+  dataReadiness?: number;     // 1-5 sub-score
+  integrationComplexity?: number; // 1-5 sub-score
+  changeMgmt?: number;        // 1-5 sub-score
+  monthlyTokens?: number;
+  description?: string;
 }
 
 interface UseCase {
@@ -483,27 +492,121 @@ interface PriorityMatrixProps {
   data: DashboardData['priorityMatrix'];
 }
 
-// Custom tooltip for the Value-Readiness Matrix
-const MatrixTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const point = payload[0].payload;
-    return (
-      <div className="bg-white p-4 rounded-xl shadow-2xl border border-slate-200 text-slate-900 max-w-xs">
-        <p className="font-bold text-lg mb-1">{point.name}</p>
-        <p className="text-sm font-semibold mb-2" style={{ color: point.color }}>{point.type}</p>
-        <div className="h-px bg-slate-100 my-2"></div>
-        <div className="space-y-1">
-          <p className="text-xs text-slate-500">Business Value Score: <span className="font-semibold text-slate-700">{point.y.toFixed(0)}/100</span></p>
-          <p className="text-xs text-slate-500">Readiness Score: <span className="font-semibold text-slate-700">{point.x.toFixed(0)}/100</span></p>
-          <p className="text-xs text-slate-500">Effort: <span className="font-semibold text-slate-700">{point.z}/5</span> (smaller bubble = easier)</p>
-        </div>
+// Detail drawer for clicked use case
+const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClose: () => void }) => {
+  const scoreBar = (label: string, value: number, max: number, color: string) => (
+    <div className="mb-3">
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-slate-400">{label}</span>
+        <span className="text-slate-200 font-semibold">{value}/{max}</span>
       </div>
-    );
-  }
-  return null;
+      <div className="w-full h-1.5 bg-slate-700 rounded-full">
+        <motion.div
+          className="h-full rounded-full"
+          style={{ backgroundColor: color }}
+          initial={{ width: 0 }}
+          animate={{ width: `${(value / max) * 100}%` }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        />
+      </div>
+    </div>
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 40 }}
+      className="fixed right-0 top-0 bottom-0 w-full sm:w-[380px] bg-[#0F172A] border-l border-slate-700 z-[60] overflow-y-auto shadow-2xl"
+    >
+      <div className="p-6">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-white leading-tight">{point.name}</h3>
+            {point.priorityTier && (
+              <span className={`inline-block mt-2 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                point.priorityTier === 'Critical' ? 'bg-slate-800 text-white border border-slate-600' :
+                point.priorityTier === 'High' ? 'bg-blue-700/80 text-white' :
+                point.priorityTier === 'Medium' ? 'bg-blue-500/60 text-white' :
+                'bg-slate-500/50 text-white'
+              }`}>
+                {point.priorityTier} Priority
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-slate-700 transition-colors text-slate-400 hover:text-white"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Quadrant placement */}
+        <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
+          <p className="text-sm font-semibold text-slate-300 mb-1">Quadrant: {point.type}</p>
+          <p className="text-xs text-slate-500">
+            {point.type === 'Quick Win' && 'High value with high readiness. Execute immediately.'}
+            {point.type === 'Strategic Bet' && 'High value but requires planning. Worth the investment.'}
+            {point.type === 'Easy Gain' && 'Low value but easy to implement. Do if capacity allows.'}
+            {point.type === 'Fill-In' && 'Low value but easy to implement. Do if capacity allows.'}
+            {point.type === 'Defer' && 'Low value with low readiness. Deprioritize or redesign.'}
+            {point.type === 'Reconsider' && 'Low value with low readiness. Deprioritize or redesign.'}
+          </p>
+        </div>
+
+        {/* Key metrics */}
+        {point.annualValue != null && point.annualValue > 0 && (
+          <div className="mb-6">
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Annual Value</p>
+            <p className="text-2xl font-bold text-white">{format.currencyAuto(point.annualValue)}</p>
+          </div>
+        )}
+
+        {/* Score bars */}
+        <div className="mb-6">
+          <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Scoring Breakdown</p>
+          {scoreBar('Business Value', point.y, 100, '#059669')}
+          {scoreBar('Readiness', point.x, 100, '#0339AF')}
+          {point.priorityScore != null && point.priorityScore > 0 && scoreBar('Priority Score', point.priorityScore, 100, '#4C73E9')}
+          {scoreBar('Effort', point.z, 5, '#D97706')}
+          {point.timeToValue && scoreBar('Time to Value', point.timeToValue, 24, '#0D9488')}
+        </div>
+
+        {/* Sub-scores */}
+        {(point.dataReadiness || point.integrationComplexity || point.changeMgmt) && (
+          <div className="mb-6">
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Implementation Sub-Scores</p>
+            {point.dataReadiness && scoreBar('Data Readiness', point.dataReadiness, 5, '#38BDF8')}
+            {point.integrationComplexity && scoreBar('Integration Complexity', point.integrationComplexity, 5, '#F59E0B')}
+            {point.changeMgmt && scoreBar('Change Management', point.changeMgmt, 5, '#A78BFA')}
+          </div>
+        )}
+
+        {/* Tokens */}
+        {point.monthlyTokens != null && point.monthlyTokens > 0 && (
+          <div className="mb-6">
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Monthly Tokens</p>
+            <p className="text-sm font-mono text-slate-300">{format.tokensPerMonth(point.monthlyTokens)}</p>
+          </div>
+        )}
+
+        {/* Description */}
+        {point.description && (
+          <div>
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Description</p>
+            <p className="text-sm text-slate-400 leading-relaxed">{point.description}</p>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
 };
 
 const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
+  const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
+  const [selectedPoint, setSelectedPoint] = useState<MatrixDataPoint | null>(null);
+
   return (
     <section className="py-16 md:py-28 bg-[#0F172A] text-white relative overflow-hidden">
       <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "url('https://grainy-gradients.vercel.app/noise.svg')" }}></div>
@@ -516,61 +619,46 @@ const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
               {sanitizeForProse(data.description)}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3 md:gap-4 mt-4 md:mt-0">
-            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#059669]"></div>Quick Win</div>
-            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#0339AF]"></div>Strategic Bet</div>
-            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#0D9488]"></div>Easy Gain</div>
-            <div className="flex items-center gap-2 text-xs md:text-sm text-slate-400"><div className="w-3 h-3 rounded-full bg-[#94A3B8]"></div>Defer</div>
+          {/* View toggle */}
+          <div className="flex items-center gap-1 mt-4 md:mt-0 bg-white/5 rounded-lg p-1 border border-white/10">
+            <button
+              onClick={() => setViewMode('chart')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                viewMode === 'chart'
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <ScatterIcon className="w-3.5 h-3.5" />
+              Chart
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                viewMode === 'table'
+                  ? 'bg-white/10 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              Scorecard
+            </button>
           </div>
         </div>
 
         <div className="overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
-          <div className="h-64 md:h-80 lg:h-[560px] min-w-[500px] md:min-w-0 w-full bg-white/5 rounded-2xl p-3 md:p-6 border border-white/10 backdrop-blur-sm">
-            <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 30, bottom: 30, left: 30 }}>
-                {/* Quadrant background fills */}
-                <ReferenceArea x1={50} x2={100} y1={50} y2={100} fill="#059669" fillOpacity={0.06} />
-                <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#0339AF" fillOpacity={0.06} />
-                <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#0D9488" fillOpacity={0.06} />
-                <ReferenceArea x1={0} x2={50} y1={0} y2={50} fill="#94A3B8" fillOpacity={0.04} />
-
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" strokeOpacity={0.5} />
-
-                <XAxis
-                  type="number"
-                  dataKey="x"
-                  domain={[0, 100]}
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Implementation Readiness', position: 'insideBottom', offset: -15, fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="y"
-                  domain={[0, 100]}
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 11 }}
-                  label={{ value: 'Business Value', angle: -90, position: 'insideLeft', offset: -15, fill: '#94a3b8', fontSize: 12, fontWeight: 600 }}
-                />
-                <ZAxis type="number" dataKey="z" range={[80, 400]} />
-
-                {/* Quadrant divider lines */}
-                <ReferenceLine x={50} stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5}>
-                  <Label value="" />
-                </ReferenceLine>
-                <ReferenceLine y={50} stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5}>
-                  <Label value="" />
-                </ReferenceLine>
-
-                <Tooltip content={<MatrixTooltip />} cursor={{ strokeDasharray: '3 3' }} />
-
-                <Scatter name="Initiatives" data={data.data} fill="#8884d8">
-                  {data.data.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} fillOpacity={0.9} stroke={entry.color} strokeWidth={2} />
-                  ))}
-                </Scatter>
-              </ScatterChart>
-            </ResponsiveContainer>
+          <div className="min-w-[500px] md:min-w-0 w-full bg-white/5 rounded-2xl p-3 md:p-6 border border-white/10 backdrop-blur-sm">
+            {viewMode === 'chart' ? (
+              <QuadrantBubbleChart
+                data={data.data}
+                onBubbleClick={(point) => setSelectedPoint(point)}
+              />
+            ) : (
+              <MatrixScorecard
+                data={data.data}
+                onRowClick={(point) => setSelectedPoint(point)}
+              />
+            )}
           </div>
         </div>
 
@@ -585,15 +673,34 @@ const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
             <p className="text-xs text-slate-400">High Value + Low Readiness</p>
           </div>
           <div className="bg-[#0D9488]/10 border border-[#0D9488]/20 rounded-lg p-3 text-center">
-            <p className="text-sm font-bold text-[#0D9488]">Easy Gains</p>
+            <p className="text-sm font-bold text-[#0D9488]">Fill-Ins</p>
             <p className="text-xs text-slate-400">Low Value + High Readiness</p>
           </div>
           <div className="bg-[#94A3B8]/10 border border-[#94A3B8]/20 rounded-lg p-3 text-center">
-            <p className="text-sm font-bold text-[#94A3B8]">Defer</p>
+            <p className="text-sm font-bold text-[#94A3B8]">Reconsider</p>
             <p className="text-xs text-slate-400">Low Value + Low Readiness</p>
           </div>
         </div>
       </div>
+
+      {/* Detail drawer */}
+      <AnimatePresence>
+        {selectedPoint && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 z-[55]"
+              onClick={() => setSelectedPoint(null)}
+            />
+            <UseCaseDetailDrawer
+              point={selectedPoint}
+              onClose={() => setSelectedPoint(null)}
+            />
+          </>
+        )}
+      </AnimatePresence>
     </section>
   );
 };
