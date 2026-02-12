@@ -1235,12 +1235,12 @@ export function postProcessAnalysis(analysisResult: any): any {
     totalMonthlyTokens,
   });
 
-  // Get top 5 use cases by priority score
+  // Get top 10 use cases by priority score
   const sortedUseCases = [...(step7?.data || [])].sort(
     (a: any, b: any) => (b["Priority Score (0-100)"] || 0) - (a["Priority Score (0-100)"] || 0)
   );
 
-  const topUseCases = sortedUseCases.slice(0, 5).map((uc: any, index: number) => {
+  const topUseCases = sortedUseCases.slice(0, 10).map((uc: any, index: number) => {
     const step5Record = correctedStep5Data.find(r => r.ID === uc.ID);
     return {
       rank: index + 1,

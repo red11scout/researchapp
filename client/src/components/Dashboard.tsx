@@ -178,11 +178,11 @@ const DEFAULT_DATA: DashboardData = {
     description: "Initiatives mapped by Business Value vs. Implementation Readiness.\nBubble size indicates Implementation Effort (smaller = easier).",
     data: [
       { name: 'Auto Credit Memo', x: 35, y: 85, z: 4, type: 'Strategic Bet', color: BRAND.primary },
-      { name: 'AML Alert Triage', x: 70, y: 75, z: 3, type: 'Quick Win', color: BRAND.success },
+      { name: 'AML Alert Triage', x: 70, y: 75, z: 3, type: 'Champion', color: BRAND.success },
       { name: 'Portfolio Stress Test', x: 30, y: 70, z: 4, type: 'Strategic Bet', color: BRAND.primary },
-      { name: 'Wealth Advisor Suite', x: 65, y: 68, z: 3, type: 'Quick Win', color: BRAND.success },
-      { name: 'Banking Copilot', x: 55, y: 50, z: 3, type: 'Easy Gain', color: BRAND.teal },
-      { name: 'Legacy Code Docs', x: 80, y: 20, z: 2, type: 'Easy Gain', color: BRAND.teal },
+      { name: 'Wealth Advisor Suite', x: 65, y: 68, z: 3, type: 'Champion', color: BRAND.success },
+      { name: 'Banking Copilot', x: 55, y: 50, z: 3, type: 'Quick Win', color: BRAND.teal },
+      { name: 'Legacy Code Docs', x: 80, y: 20, z: 2, type: 'Quick Win', color: BRAND.teal },
     ]
   },
   useCases: {
@@ -546,12 +546,10 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
         <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
           <p className="text-sm font-semibold text-slate-300 mb-1">Quadrant: {point.type}</p>
           <p className="text-xs text-slate-500">
-            {point.type === 'Quick Win' && 'High value with high readiness. Execute immediately.'}
+            {point.type === 'Champion' && 'High value with high readiness. Execute immediately.'}
             {point.type === 'Strategic Bet' && 'High value but requires planning. Worth the investment.'}
-            {point.type === 'Easy Gain' && 'Low value but easy to implement. Do if capacity allows.'}
-            {point.type === 'Fill-In' && 'Low value but easy to implement. Do if capacity allows.'}
-            {point.type === 'Defer' && 'Low value with low readiness. Deprioritize or redesign.'}
-            {point.type === 'Reconsider' && 'Low value with low readiness. Deprioritize or redesign.'}
+            {point.type === 'Quick Win' && 'Lower value but easy to implement. Quick time-to-value.'}
+            {point.type === 'Foundation' && 'Building blocks for future AI maturity. Invest strategically.'}
           </p>
         </div>
 
@@ -665,7 +663,7 @@ const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
         {/* Quadrant labels below chart */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 md:mt-6">
           <div className="bg-[#059669]/10 border border-[#059669]/20 rounded-lg p-3 text-center">
-            <p className="text-sm font-bold text-[#059669]">Quick Wins</p>
+            <p className="text-sm font-bold text-[#059669]">Champions</p>
             <p className="text-xs text-slate-400">High Value + High Readiness</p>
           </div>
           <div className="bg-[#0339AF]/10 border border-[#0339AF]/20 rounded-lg p-3 text-center">
@@ -673,11 +671,11 @@ const PriorityMatrix = ({ data }: PriorityMatrixProps) => {
             <p className="text-xs text-slate-400">High Value + Low Readiness</p>
           </div>
           <div className="bg-[#0D9488]/10 border border-[#0D9488]/20 rounded-lg p-3 text-center">
-            <p className="text-sm font-bold text-[#0D9488]">Fill-Ins</p>
+            <p className="text-sm font-bold text-[#0D9488]">Quick Wins</p>
             <p className="text-xs text-slate-400">Low Value + High Readiness</p>
           </div>
           <div className="bg-[#94A3B8]/10 border border-[#94A3B8]/20 rounded-lg p-3 text-center">
-            <p className="text-sm font-bold text-[#94A3B8]">Reconsider</p>
+            <p className="text-sm font-bold text-[#94A3B8]">Foundation</p>
             <p className="text-xs text-slate-400">Low Value + Low Readiness</p>
           </div>
         </div>

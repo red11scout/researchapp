@@ -1711,7 +1711,7 @@ Return ONLY valid JSON with this structure:
         
         // Update top use cases based on recalculated priority scores
         if (step7?.data && Array.isArray(step7.data)) {
-          const topUseCases = step7.data.slice(0, 5).map((row: any, index: number) => ({
+          const topUseCases = step7.data.slice(0, 10).map((row: any, index: number) => ({
             rank: index + 1,
             useCase: row['Use Case'],
             annualValue: row['Total Annual Value ($)'] || row['annualValue'],

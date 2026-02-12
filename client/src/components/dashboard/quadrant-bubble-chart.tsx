@@ -34,10 +34,10 @@ const TIER_COLORS = chartColors.tier;
 const QUADRANT_COLORS = chartColors.quadrant;
 
 const QUADRANT_LABELS = [
-  { label: 'Quick Wins', x: 'right', y: 'top', color: QUADRANT_COLORS.quickWin },
+  { label: 'Champions', x: 'right', y: 'top', color: QUADRANT_COLORS.champion },
   { label: 'Strategic Bets', x: 'left', y: 'top', color: QUADRANT_COLORS.strategicBet },
-  { label: 'Fill-Ins', x: 'right', y: 'bottom', color: QUADRANT_COLORS.fillIn },
-  { label: 'Reconsider', x: 'left', y: 'bottom', color: QUADRANT_COLORS.reconsider },
+  { label: 'Quick Wins', x: 'right', y: 'bottom', color: QUADRANT_COLORS.quickWin },
+  { label: 'Foundation', x: 'left', y: 'bottom', color: QUADRANT_COLORS.foundation },
 ] as const;
 
 function getTierColorValue(tier?: string): string {
@@ -164,7 +164,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
         <rect
           x={midX} y={MARGIN.top}
           width={width - MARGIN.right - midX} height={midY - MARGIN.top}
-          fill={QUADRANT_COLORS.quickWin} opacity={0.06}
+          fill={QUADRANT_COLORS.champion} opacity={0.06}
         />
         <rect
           x={MARGIN.left} y={MARGIN.top}
@@ -174,12 +174,12 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
         <rect
           x={midX} y={midY}
           width={width - MARGIN.right - midX} height={height - MARGIN.bottom - midY}
-          fill={QUADRANT_COLORS.fillIn} opacity={0.06}
+          fill={QUADRANT_COLORS.quickWin} opacity={0.06}
         />
         <rect
           x={MARGIN.left} y={midY}
           width={midX - MARGIN.left} height={height - MARGIN.bottom - midY}
-          fill={QUADRANT_COLORS.reconsider} opacity={0.04}
+          fill={QUADRANT_COLORS.foundation} opacity={0.04}
         />
 
         {/* Quadrant labels */}
@@ -189,10 +189,10 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           textAnchor="middle"
           fontSize={11}
           fontWeight={600}
-          fill={QUADRANT_COLORS.quickWin}
+          fill={QUADRANT_COLORS.champion}
           opacity={0.7}
         >
-          Quick Wins
+          Champions
         </text>
         <text
           x={MARGIN.left + (midX - MARGIN.left) / 2}
@@ -211,10 +211,10 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           textAnchor="middle"
           fontSize={11}
           fontWeight={600}
-          fill={QUADRANT_COLORS.fillIn}
+          fill={QUADRANT_COLORS.quickWin}
           opacity={0.7}
         >
-          Fill-Ins
+          Quick Wins
         </text>
         <text
           x={MARGIN.left + (midX - MARGIN.left) / 2}
@@ -222,10 +222,10 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           textAnchor="middle"
           fontSize={11}
           fontWeight={600}
-          fill={QUADRANT_COLORS.reconsider}
+          fill={QUADRANT_COLORS.foundation}
           opacity={0.5}
         >
-          Reconsider
+          Foundation
         </text>
 
         {/* Midpoint divider lines */}

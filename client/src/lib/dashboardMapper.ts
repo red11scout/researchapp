@@ -123,18 +123,18 @@ function calculateBusinessValueScore(annualValue: number, maxValue: number): num
 }
 
 function getQuadrantType(valueScore: number, readinessScore: number): string {
-  if (valueScore >= 50 && readinessScore >= 50) return "Quick Win";
+  if (valueScore >= 50 && readinessScore >= 50) return "Champion";
   if (valueScore >= 50 && readinessScore < 50) return "Strategic Bet";
-  if (valueScore < 50 && readinessScore >= 50) return "Easy Gain";
-  return "Defer";
+  if (valueScore < 50 && readinessScore >= 50) return "Quick Win";
+  return "Foundation";
 }
 
 function getQuadrantColor(type: string): string {
   switch (type) {
-    case "Quick Win": return BRAND.success;
+    case "Champion": return BRAND.success;
     case "Strategic Bet": return BRAND.primary;
-    case "Easy Gain": return BRAND.teal;
-    case "Defer": return BRAND.gray;
+    case "Quick Win": return BRAND.teal;
+    case "Foundation": return BRAND.gray;
     default: return BRAND.accent;
   }
 }
@@ -479,7 +479,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
   // Use Case cards
   const useCaseItems: UseCase[] = [];
   if (dashboard.topUseCases && dashboard.topUseCases.length > 0) {
-    dashboard.topUseCases.slice(0, 6).forEach((uc, idx) => {
+    dashboard.topUseCases.slice(0, 10).forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
       const step5 = analysis.steps.find(s => s.step === 5);
       let impactText = "Improves operational efficiency";

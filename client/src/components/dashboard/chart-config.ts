@@ -47,10 +47,10 @@ export const chartColors = {
 
   // Quadrant background fills (used at 6% opacity)
   quadrant: {
-    quickWin: '#059669',
+    champion: '#059669',
     strategicBet: '#0339AF',
-    fillIn: '#0D9488',
-    reconsider: '#94A3B8',
+    quickWin: '#0D9488',
+    foundation: '#94A3B8',
   },
 };
 
