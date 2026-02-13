@@ -127,6 +127,34 @@ export function generateProfessionalHTMLReport(
     return str.replace(/[&<>"']/g, (char) => map[char]);
   };
 
+  // Split long text into multiple <p> tags for readability
+  const splitIntoParagraphs = (text: string): string => {
+    if (!text) return '<p></p>';
+    // First split on double-newlines
+    let paragraphs = text.split(/\n\n+/).filter(p => p.trim());
+    // For any remaining long paragraphs (>300 chars), split on sentence boundaries
+    const result: string[] = [];
+    for (const para of paragraphs) {
+      if (para.length > 300) {
+        // Split on ". " followed by an uppercase letter (sentence boundary)
+        const sentences = para.split(/(?<=\.\s)(?=[A-Z])/);
+        let chunk = '';
+        for (const sentence of sentences) {
+          if (chunk.length + sentence.length > 350 && chunk.length > 0) {
+            result.push(chunk.trim());
+            chunk = sentence;
+          } else {
+            chunk += sentence;
+          }
+        }
+        if (chunk.trim()) result.push(chunk.trim());
+      } else {
+        result.push(para.trim());
+      }
+    }
+    return result.map(p => `<p class="body-text">${p}</p>`).join('\n          ');
+  };
+
   // Get step data
   const getStepData = (stepIndex: number): any => {
     return steps[stepIndex] || {};
@@ -175,7 +203,7 @@ export function generateProfessionalHTMLReport(
       topUseCases && topUseCases.length > 0
         ? `
         <div class="subsection">
-          <h3 class="subsection-heading">Top 5 AI Use Cases by Priority</h3>
+          <h3 class="subsection-heading">AI Use Cases by Priority</h3>
           <table class="data-table">
             <thead>
               <tr>
@@ -240,7 +268,7 @@ export function generateProfessionalHTMLReport(
 
         <div class="subsection">
           <h3 class="subsection-heading">Executive Overview</h3>
-          <p class="body-text">${escapeHtml(narrative)}</p>
+          ${splitIntoParagraphs(escapeHtml(narrative))}
         </div>
 
         ${useCasesHtml}
@@ -277,10 +305,6 @@ export function generateProfessionalHTMLReport(
                 <div class="metric-label">5-Year NPV</div>
                 <div class="metric-value" style="color: ${colors.slate};">${formatCurrency((conservative as any).npv || 0)}</div>
               </div>
-              <div class="scenario-metric">
-                <div class="metric-label">Payback Period</div>
-                <div class="metric-value" style="color: ${colors.slate};">${((conservative as any).paybackMonths || 0) > 0 ? `${(conservative as any).paybackMonths} mo` : '< 12 mo'}</div>
-              </div>
             </div>
           </div>
 
@@ -304,10 +328,6 @@ export function generateProfessionalHTMLReport(
                 <div class="metric-label">5-Year NPV</div>
                 <div class="metric-value" style="color: ${colors.primary};">${formatCurrency((moderate as any).npv || 0)}</div>
               </div>
-              <div class="scenario-metric">
-                <div class="metric-label">Payback Period</div>
-                <div class="metric-value" style="color: ${colors.primary};">${((moderate as any).paybackMonths || 0) > 0 ? `${(moderate as any).paybackMonths} mo` : '< 12 mo'}</div>
-              </div>
             </div>
           </div>
 
@@ -329,10 +349,6 @@ export function generateProfessionalHTMLReport(
               <div class="scenario-metric">
                 <div class="metric-label">5-Year NPV</div>
                 <div class="metric-value" style="color: ${colors.success};">${formatCurrency((aggressive as any).npv || 0)}</div>
-              </div>
-              <div class="scenario-metric">
-                <div class="metric-label">Payback Period</div>
-                <div class="metric-value" style="color: ${colors.success};">${((aggressive as any).paybackMonths || 0) > 0 ? `${(aggressive as any).paybackMonths} mo` : '< 12 mo'}</div>
               </div>
             </div>
           </div>
@@ -361,12 +377,6 @@ export function generateProfessionalHTMLReport(
                 <td class="text-right">${formatCurrency((conservative as any).npv || 0)}</td>
                 <td class="text-right font-semibold" style="background: #F8FAFF;">${formatCurrency((moderate as any).npv || 0)}</td>
                 <td class="text-right">${formatCurrency((aggressive as any).npv || 0)}</td>
-              </tr>
-              <tr>
-                <td class="font-semibold">Payback Period</td>
-                <td class="text-right">${((conservative as any).paybackMonths || 0) > 0 ? `${(conservative as any).paybackMonths} months` : '< 12 months'}</td>
-                <td class="text-right font-semibold" style="background: #F8FAFF;">${((moderate as any).paybackMonths || 0) > 0 ? `${(moderate as any).paybackMonths} months` : '< 12 months'}</td>
-                <td class="text-right">${((aggressive as any).paybackMonths || 0) > 0 ? `${(aggressive as any).paybackMonths} months` : '< 12 months'}</td>
               </tr>
             </tbody>
           </table>
@@ -413,10 +423,7 @@ export function generateProfessionalHTMLReport(
       <div class="section" id="company-overview">
         <h2 class="section-heading">Company Overview</h2>
         <div class="prose">
-          ${escapeHtml(content)
-            .split('\n\n')
-            .map((p: string) => `<p>${p}</p>`)
-            .join('')}
+          ${splitIntoParagraphs(escapeHtml(content))}
         </div>
       </div>
     `;
@@ -911,7 +918,7 @@ export function generateProfessionalHTMLReport(
     return `
       <div class="section" id="value-matrix">
         <h2 class="section-heading">Value-Feasibility Matrix</h2>
-        <p class="section-intro">Use cases plotted by Normalized Annual Value (vertical) vs. Feasibility Score (horizontal). Bubble size reflects Time-to-Value (larger = faster payback). Quadrant threshold at 5.5 on both axes.</p>
+        <p class="section-intro">Use cases plotted by Normalized Annual Value (vertical) vs. Feasibility Score (horizontal). Bubble size reflects Time-to-Value (larger = faster time-to-value). Quadrant threshold at 5.5 on both axes.</p>
 
         <div style="text-align: center; margin: 24px 0;">
           <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="max-width: 600px; width: 100%; height: auto; font-family: 'Inter', sans-serif;">

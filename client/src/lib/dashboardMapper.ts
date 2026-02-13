@@ -44,9 +44,9 @@ interface ReportAnalysisData {
   }>;
   summary: string;
   scenarioAnalysis?: {
-    conservative?: { annualBenefit: number | string; npv: number | string; paybackMonths: number };
-    moderate?: { annualBenefit: number | string; npv: number | string; paybackMonths: number };
-    aggressive?: { annualBenefit: number | string; npv: number | string; paybackMonths: number };
+    conservative?: { annualBenefit: number | string; npv: number | string; paybackMonths?: number };
+    moderate?: { annualBenefit: number | string; npv: number | string; paybackMonths?: number };
+    aggressive?: { annualBenefit: number | string; npv: number | string; paybackMonths?: number };
   };
   executiveDashboard: {
     totalRevenueBenefit: number;
@@ -207,9 +207,9 @@ function generateValueInsights(dashboard: ReportAnalysisData['executiveDashboard
 // EXTRACT SCENARIO COMPARISON from analysis data
 // ============================================================================
 function extractScenarioComparison(analysisData: ReportAnalysisData): {
-  conservative: { annualBenefit: string; npv: string; paybackMonths: number };
-  moderate: { annualBenefit: string; npv: string; paybackMonths: number };
-  aggressive: { annualBenefit: string; npv: string; paybackMonths: number };
+  conservative: { annualBenefit: string; npv: string };
+  moderate: { annualBenefit: string; npv: string };
+  aggressive: { annualBenefit: string; npv: string };
 } | null {
   if (!analysisData.scenarioAnalysis) {
     return null;
@@ -233,9 +233,6 @@ function extractScenarioComparison(analysisData: ReportAnalysisData): {
             ? parseFormattedValue(scenario.npv)
             : scenario.npv
         ),
-        paybackMonths: typeof scenario.paybackMonths === 'string'
-          ? parseInt(scenario.paybackMonths, 10)
-          : scenario.paybackMonths,
       };
     }
   }
@@ -579,7 +576,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
     },
     priorityMatrix: {
       title: "Value-Feasibility Matrix",
-      description: "Initiatives mapped by Normalized Annual Value vs. Feasibility Score.\nBubble size indicates Time-to-Value (larger = faster payback).",
+      description: "Initiatives mapped by Normalized Annual Value vs. Feasibility Score.\nBubble size indicates Time-to-Value (larger = faster time-to-value).",
       data: matrixData
     },
     useCases: {

@@ -3195,7 +3195,7 @@ export default function Report() {
                     <div>
                       <h4 className="font-semibold mb-2 md:mb-3 flex items-center gap-2 text-sm md:text-base">
                         <Zap className="h-3.5 w-3.5 md:h-4 md:w-4 text-primary" />
-                        Top 5 Use Cases by Priority
+                        Use Cases by Priority
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger>

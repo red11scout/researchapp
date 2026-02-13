@@ -89,7 +89,7 @@ interface MatrixDataPoint {
   name: string;
   x: number;  // Feasibility Score (1-10)
   y: number;  // Normalized Annual Value (1-10)
-  z: number;  // TTV bubble score (0-1, higher = faster payback)
+  z: number;  // TTV bubble score (0-1, higher = faster time-to-value)
   type: string;  // Quadrant label: Champion, Strategic, Quick Win, Foundation
   color: string;
   // Enriched fields for consulting-grade bubble chart
@@ -148,9 +148,9 @@ interface DashboardData {
     items: UseCase[];
   };
   scenarioComparison?: {
-    conservative: { annualBenefit: string; npv: string; paybackMonths: number };
-    moderate: { annualBenefit: string; npv: string; paybackMonths: number };
-    aggressive: { annualBenefit: string; npv: string; paybackMonths: number };
+    conservative: { annualBenefit: string; npv: string };
+    moderate: { annualBenefit: string; npv: string };
+    aggressive: { annualBenefit: string; npv: string };
   };
   frictionByTheme?: Record<string, string[]>;
 }
@@ -970,21 +970,6 @@ const FinancialSensitivityAnalysis = ({ data }: FinancialSensitivityAnalysisProp
                     </p>
                   </div>
 
-                  {/* Payback Period */}
-                  <div>
-                    <p className="text-gray-500 text-xs uppercase font-semibold tracking-wide mb-2">
-                      Payback Period
-                    </p>
-                    <div className="flex items-baseline gap-2">
-                      <p className={`text-2xl md:text-3xl font-bold ${scenario.textColor}`}>
-                        {scenarioData.paybackMonths}
-                      </p>
-                      <p className="text-gray-600 text-sm md:text-base">months</p>
-                    </div>
-                    <p className="text-gray-500 text-xs mt-1">
-                      Time to return on investment
-                    </p>
-                  </div>
                 </div>
               </motion.div>
             );

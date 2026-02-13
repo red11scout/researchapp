@@ -640,7 +640,7 @@ Calculate and include:
 - Total Annual Value (all drivers combined)
 - Total Monthly Tokens (all use cases)
 - Value per 1M Tokens (annualized)
-- Top 5 Use Cases by Priority Score
+- Use Cases by Priority Score
 
 ═══════════════════════════════════════════════════════════════════
 OUTPUT FORMAT (CRITICAL - MUST BE VALID JSON)

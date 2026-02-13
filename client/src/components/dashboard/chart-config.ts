@@ -45,12 +45,20 @@ export const chartColors = {
     low: '#94A3B8',
   },
 
-  // Quadrant background fills (used at 6% opacity)
+  // Quadrant background fills (pastel, applied directly without opacity)
   quadrant: {
-    champion: '#059669',
-    strategicBet: '#0339AF',
-    quickWin: '#0D9488',
-    foundation: '#94A3B8',
+    champion: '#DCFCE7',
+    strategicBet: '#DBEAFE',
+    quickWin: '#CCFBF1',
+    foundation: '#F1F5F9',
+  },
+
+  // Quadrant label colors (darker for text contrast)
+  quadrantLabel: {
+    champion: '#166534',
+    strategicBet: '#1E40AF',
+    quickWin: '#115E59',
+    foundation: '#475569',
   },
 };
 

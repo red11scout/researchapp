@@ -409,7 +409,6 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     realization: string;
     annualBenefit: string;
     npv: string;
-    payback: string;
   }) => {
     // Card background
     doc.setFillColor(...config.bgColor);
@@ -473,7 +472,6 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     const metrics = [
       { label: 'Annual Benefit', value: config.annualBenefit },
       { label: '5-Year NPV', value: config.npv },
-      { label: 'Payback', value: config.payback },
     ];
     metrics.forEach(m => {
       doc.setFont('helvetica', 'normal');
@@ -841,7 +839,6 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
         realization: '75% of projected',
         annualBenefit: typeof scenarios.conservative?.annualBenefit === 'string' ? scenarios.conservative.annualBenefit : formatCurrency(scenarios.conservative?.annualBenefit || 0),
         npv: typeof scenarios.conservative?.npv === 'string' ? scenarios.conservative.npv : formatCurrency(scenarios.conservative?.npv || 0),
-        payback: scenarios.conservative?.paybackMonths ? `${scenarios.conservative.paybackMonths} months` : '—',
       },
       {
         label: 'Base Case',
@@ -853,7 +850,6 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
         realization: '100% of projected',
         annualBenefit: typeof scenarios.moderate?.annualBenefit === 'string' ? scenarios.moderate.annualBenefit : formatCurrency(scenarios.moderate?.annualBenefit || 0),
         npv: typeof scenarios.moderate?.npv === 'string' ? scenarios.moderate.npv : formatCurrency(scenarios.moderate?.npv || 0),
-        payback: scenarios.moderate?.paybackMonths ? `${scenarios.moderate.paybackMonths} months` : '—',
       },
       {
         label: 'Optimistic',
@@ -865,7 +861,6 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
         realization: '125% of projected',
         annualBenefit: typeof scenarios.aggressive?.annualBenefit === 'string' ? scenarios.aggressive.annualBenefit : formatCurrency(scenarios.aggressive?.annualBenefit || 0),
         npv: typeof scenarios.aggressive?.npv === 'string' ? scenarios.aggressive.npv : formatCurrency(scenarios.aggressive?.npv || 0),
-        payback: scenarios.aggressive?.paybackMonths ? `${scenarios.aggressive.paybackMonths} months` : '—',
       },
     ];
 
@@ -910,7 +905,6 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
     const metricsTableData = [
       ['Annual Benefit', scenarioConfigs[0].annualBenefit, scenarioConfigs[1].annualBenefit, scenarioConfigs[2].annualBenefit],
       ['5-Year NPV', scenarioConfigs[0].npv, scenarioConfigs[1].npv, scenarioConfigs[2].npv],
-      ['Payback Period', scenarioConfigs[0].payback, scenarioConfigs[1].payback, scenarioConfigs[2].payback],
       ['IRR', 'N/A', data.analysisData.multiYearProjection?.irr || 'N/A', 'N/A'],
     ];
 

@@ -146,7 +146,7 @@ export const copy = {
   tooltips: {
     roi: '36-month return on investment, calculated as (Total Benefits - Total Costs) / Total Costs',
     npv: 'Net present value using 10% discount rate over 36-month horizon',
-    payback: 'Months until cumulative benefits exceed cumulative costs',
+    timeToValue: 'Estimated months to realize projected benefits',
     confidence: 'Estimate reliability based on data quality and assumptions',
     tokenCost: 'Monthly inference cost at projected transaction volume',
     priorityScore: 'Weighted composite of impact (40%), feasibility (30%), strategic fit (30%)',

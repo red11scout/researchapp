@@ -38,13 +38,7 @@ const MARGIN = { top: 30, right: 30, bottom: 50, left: 55 };
 
 const TIER_COLORS = chartColors.tier;
 const QUADRANT_COLORS = chartColors.quadrant;
-
-const QUADRANT_LABELS = [
-  { label: 'Champions', x: 'right', y: 'top', color: QUADRANT_COLORS.champion },
-  { label: 'Strategic', x: 'left', y: 'top', color: QUADRANT_COLORS.strategicBet },
-  { label: 'Quick Wins', x: 'right', y: 'bottom', color: QUADRANT_COLORS.quickWin },
-  { label: 'Foundations', x: 'left', y: 'bottom', color: QUADRANT_COLORS.foundation },
-] as const;
+const QUADRANT_LABEL_COLORS = chartColors.quadrantLabel;
 
 function getTierColorValue(tier?: string): string {
   if (!tier) return TIER_COLORS.medium;
@@ -79,6 +73,17 @@ function getTierBadgeClasses(tier?: string): string {
   }
 }
 
+/** Generate nice tick values for an axis given a domain */
+function generateTicks(min: number, max: number): number[] {
+  const ticks: number[] = [];
+  const start = Math.floor(min);
+  const end = Math.ceil(max);
+  for (let v = start; v <= end; v++) {
+    ticks.push(v);
+  }
+  return ticks;
+}
+
 export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
@@ -103,17 +108,70 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
 
   const { width, height } = dimensions;
 
-  // D3 scales — 1-10 domain for both axes
+  // Dynamic axis domains based on actual data, with padding
+  const { xDomain, yDomain, midXValue, midYValue } = useMemo(() => {
+    if (data.length === 0) {
+      return { xDomain: [1, 10] as [number, number], yDomain: [1, 10] as [number, number], midXValue: 5.5, midYValue: 5.5 };
+    }
+
+    const xValues = data.map(d => d.x);
+    const yValues = data.map(d => d.y);
+
+    const xMin = Math.min(...xValues);
+    const xMax = Math.max(...xValues);
+    const yMin = Math.min(...yValues);
+    const yMax = Math.max(...yValues);
+
+    // Compute the data midpoint for the quadrant divider
+    const xMid = (xMin + xMax) / 2;
+    const yMid = (yMin + yMax) / 2;
+
+    // Add padding around the data range (at least 1 unit on each side)
+    const xPad = Math.max(1, (xMax - xMin) * 0.3);
+    const yPad = Math.max(1, (yMax - yMin) * 0.3);
+
+    // Ensure minimum range of 4 units so chart isn't too zoomed
+    let xLow = Math.floor(xMin - xPad);
+    let xHigh = Math.ceil(xMax + xPad);
+    if (xHigh - xLow < 4) {
+      const center = (xLow + xHigh) / 2;
+      xLow = center - 2;
+      xHigh = center + 2;
+    }
+
+    let yLow = Math.floor(yMin - yPad);
+    let yHigh = Math.ceil(yMax + yPad);
+    if (yHigh - yLow < 4) {
+      const center = (yLow + yHigh) / 2;
+      yLow = center - 2;
+      yHigh = center + 2;
+    }
+
+    // Clamp to reasonable bounds (0-11 to allow slight overflow)
+    xLow = Math.max(0, xLow);
+    xHigh = Math.min(11, xHigh);
+    yLow = Math.max(0, yLow);
+    yHigh = Math.min(11, yHigh);
+
+    return {
+      xDomain: [xLow, xHigh] as [number, number],
+      yDomain: [yLow, yHigh] as [number, number],
+      midXValue: xMid,
+      midYValue: yMid,
+    };
+  }, [data]);
+
+  // D3 scales with dynamic domains
   const xScale = useMemo(
-    () => scaleLinear().domain([1, 10]).range([MARGIN.left, width - MARGIN.right]),
-    [width]
+    () => scaleLinear().domain(xDomain).range([MARGIN.left, width - MARGIN.right]),
+    [width, xDomain]
   );
   const yScale = useMemo(
-    () => scaleLinear().domain([1, 10]).range([height - MARGIN.bottom, MARGIN.top]),
-    [height]
+    () => scaleLinear().domain(yDomain).range([height - MARGIN.bottom, MARGIN.top]),
+    [height, yDomain]
   );
 
-  // TTV bubble sizing: z is TTV score (0-1), where 1 = fastest payback = largest bubble
+  // TTV bubble sizing: z is TTV score (0-1), where 1 = fastest time-to-value = largest bubble
   // Minimum visible radius for TTV=0 cases
   const MIN_BUBBLE_RADIUS = 4;
   const MAX_BUBBLE_RADIUS = Math.min(36, width / 25);
@@ -157,8 +215,13 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
     setHoveredIndex(null);
   }, []);
 
-  const midX = xScale(5.5);
-  const midY = yScale(5.5);
+  // Quadrant divider pixel positions from the data midpoint
+  const midX = xScale(midXValue);
+  const midY = yScale(midYValue);
+
+  // Generate tick values based on dynamic domains
+  const xTicks = useMemo(() => generateTicks(xDomain[0], xDomain[1]), [xDomain]);
+  const yTicks = useMemo(() => generateTicks(yDomain[0], yDomain[1]), [yDomain]);
 
   const hoveredPoint = hoveredIndex !== null ? data[hoveredIndex] : null;
 
@@ -179,26 +242,26 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
-        {/* Quadrant background fills at 6% opacity */}
+        {/* Quadrant background fills — distinct pastel colors */}
         <rect
           x={midX} y={MARGIN.top}
           width={width - MARGIN.right - midX} height={midY - MARGIN.top}
-          fill={QUADRANT_COLORS.champion} opacity={0.06}
+          fill={QUADRANT_COLORS.champion} opacity={0.85}
         />
         <rect
           x={MARGIN.left} y={MARGIN.top}
           width={midX - MARGIN.left} height={midY - MARGIN.top}
-          fill={QUADRANT_COLORS.strategicBet} opacity={0.06}
+          fill={QUADRANT_COLORS.strategicBet} opacity={0.85}
         />
         <rect
           x={midX} y={midY}
           width={width - MARGIN.right - midX} height={height - MARGIN.bottom - midY}
-          fill={QUADRANT_COLORS.quickWin} opacity={0.06}
+          fill={QUADRANT_COLORS.quickWin} opacity={0.85}
         />
         <rect
           x={MARGIN.left} y={midY}
           width={midX - MARGIN.left} height={height - MARGIN.bottom - midY}
-          fill={QUADRANT_COLORS.foundation} opacity={0.04}
+          fill={QUADRANT_COLORS.foundation} opacity={0.85}
         />
 
         {/* Quadrant labels */}
@@ -207,9 +270,9 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           y={MARGIN.top + 18}
           textAnchor="middle"
           fontSize={11}
-          fontWeight={600}
-          fill={QUADRANT_COLORS.champion}
-          opacity={0.7}
+          fontWeight={700}
+          fill={QUADRANT_LABEL_COLORS.champion}
+          opacity={0.9}
         >
           Champions
         </text>
@@ -218,9 +281,9 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           y={MARGIN.top + 18}
           textAnchor="middle"
           fontSize={11}
-          fontWeight={600}
-          fill={QUADRANT_COLORS.strategicBet}
-          opacity={0.7}
+          fontWeight={700}
+          fill={QUADRANT_LABEL_COLORS.strategicBet}
+          opacity={0.9}
         >
           Strategic
         </text>
@@ -229,9 +292,9 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           y={height - MARGIN.bottom - 8}
           textAnchor="middle"
           fontSize={11}
-          fontWeight={600}
-          fill={QUADRANT_COLORS.quickWin}
-          opacity={0.7}
+          fontWeight={700}
+          fill={QUADRANT_LABEL_COLORS.quickWin}
+          opacity={0.9}
         >
           Quick Wins
         </text>
@@ -240,9 +303,9 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           y={height - MARGIN.bottom - 8}
           textAnchor="middle"
           fontSize={11}
-          fontWeight={600}
-          fill={QUADRANT_COLORS.foundation}
-          opacity={0.5}
+          fontWeight={700}
+          fill={QUADRANT_LABEL_COLORS.foundation}
+          opacity={0.9}
         >
           Foundation
         </text>
@@ -257,8 +320,8 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.6}
         />
 
-        {/* X-axis ticks and labels (1-10 scale) */}
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
+        {/* X-axis ticks and labels (dynamic) */}
+        {xTicks.map(v => (
           <g key={`x-${v}`}>
             <line
               x1={xScale(v)} y1={height - MARGIN.bottom}
@@ -283,11 +346,11 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fontWeight={600}
           fill="#94a3b8"
         >
-          Feasibility Score →
+          Feasibility Score
         </text>
 
-        {/* Y-axis ticks and labels (1-10 scale) */}
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
+        {/* Y-axis ticks and labels (dynamic) */}
+        {yTicks.map(v => (
           <g key={`y-${v}`}>
             <line
               x1={MARGIN.left - 5} y1={yScale(v)}
@@ -313,7 +376,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fill="#94a3b8"
           transform={`rotate(-90, 14, ${(MARGIN.top + height - MARGIN.bottom) / 2})`}
         >
-          Normalized Annual Value →
+          Normalized Annual Value
         </text>
 
         {/* Axis lines */}
@@ -377,7 +440,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
               textAnchor="middle"
               fontSize={9}
               fontWeight={500}
-              fill="#CBD5E1"
+              fill="#334155"
               className="pointer-events-none select-none"
               animate={{ opacity: isDimmed ? 0.15 : 0.8 }}
               transition={{ duration: 0.2 }}
