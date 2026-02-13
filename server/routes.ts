@@ -3370,5 +3370,76 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  // ============================================
+  // INTERACTIVE EDITING: Session and Edit Management
+  // Anonymous browser-based sessions (no auth required)
+  // ============================================
+
+  // POST /api/sessions - Create or get session for a report
+  app.post("/api/sessions", async (req, res) => {
+    try {
+      const { reportId, browserToken, sessionName } = req.body;
+      if (!reportId || !browserToken) {
+        return res.status(400).json({ error: "reportId and browserToken are required" });
+      }
+      const session = await storage.getOrCreateSession(reportId, browserToken, sessionName);
+      res.json(session);
+    } catch (error: any) {
+      console.error("Error creating session:", error);
+      res.status(500).json({ error: error.message || "Failed to create session" });
+    }
+  });
+
+  // GET /api/sessions/:reportId/:browserToken - Get session with edits
+  app.get("/api/sessions/:reportId/:browserToken", async (req, res) => {
+    try {
+      const { reportId, browserToken } = req.params;
+      const session = await storage.getSession(reportId, browserToken);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      const edits = await storage.getSessionEdits(session.id);
+      res.json({ session, edits });
+    } catch (error: any) {
+      console.error("Error getting session:", error);
+      res.status(500).json({ error: error.message || "Failed to get session" });
+    }
+  });
+
+  // POST /api/edits - Save a user edit
+  app.post("/api/edits", async (req, res) => {
+    try {
+      const { sessionId, reportId, stepNumber, useCaseId, fieldPath, originalValue, editedValue } = req.body;
+      if (!sessionId || !reportId || stepNumber == null || !fieldPath) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const edit = await storage.saveEdit({
+        sessionId,
+        reportId,
+        stepNumber,
+        useCaseId: useCaseId || null,
+        fieldPath,
+        originalValue: String(originalValue),
+        editedValue: String(editedValue),
+      });
+      res.json(edit);
+    } catch (error: any) {
+      console.error("Error saving edit:", error);
+      res.status(500).json({ error: error.message || "Failed to save edit" });
+    }
+  });
+
+  // DELETE /api/edits/:sessionId - Reset all edits for a session
+  app.delete("/api/edits/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      await storage.clearSessionEdits(sessionId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error clearing edits:", error);
+      res.status(500).json({ error: error.message || "Failed to clear edits" });
+    }
+  });
+
   return httpServer;
 }

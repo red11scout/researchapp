@@ -4,15 +4,21 @@ import { chartColors } from './chart-config';
 
 interface MatrixDataPoint {
   name: string;
-  x: number;
-  y: number;
-  z: number;
+  x: number;  // Feasibility Score (1-10)
+  y: number;  // Normalized Annual Value (1-10)
+  z: number;  // TTV bubble score (0-1)
   type: string;
   color: string;
   timeToValue?: number;
   priorityTier?: string;
   priorityScore?: number;
   annualValue?: number;
+  feasibilityScore?: number;
+  normalizedValue?: number;
+  organizationalCapacity?: number;
+  dataAvailabilityQuality?: number;
+  technicalInfrastructure?: number;
+  governance?: number;
   dataReadiness?: number;
   integrationComplexity?: number;
   changeMgmt?: number;
@@ -40,6 +46,12 @@ function getScoreIntensity(value: number, max: number): string {
 }
 
 function getTierBadge(tier?: string): string {
+  if (!tier) return 'bg-slate-500/50 text-white';
+  if (tier.includes('Champion')) return 'bg-emerald-700/80 text-white';
+  if (tier.includes('Quick Win')) return 'bg-teal-600/80 text-white';
+  if (tier.includes('Strategic')) return 'bg-blue-700/80 text-white';
+  if (tier.includes('Foundation')) return 'bg-slate-500/50 text-white';
+  // Legacy
   switch (tier) {
     case 'Critical': return 'bg-slate-800 text-white';
     case 'High': return 'bg-blue-700/80 text-white';
@@ -119,7 +131,7 @@ export function MatrixScorecard({ data, onRowClick }: MatrixScorecardProps) {
               className="text-center py-2 px-2 text-slate-400 font-semibold cursor-pointer hover:text-slate-200 transition-colors"
               onClick={() => toggleSort('x')}
             >
-              Readiness <SortIcon col="x" />
+              Feasibility <SortIcon col="x" />
             </th>
             <th
               className="text-center py-2 px-2 text-slate-400 font-semibold cursor-pointer hover:text-slate-200 transition-colors"
@@ -131,7 +143,7 @@ export function MatrixScorecard({ data, onRowClick }: MatrixScorecardProps) {
               className="text-center py-2 px-2 text-slate-400 font-semibold cursor-pointer hover:text-slate-200 transition-colors"
               onClick={() => toggleSort('z')}
             >
-              Effort <SortIcon col="z" />
+              TTV Score <SortIcon col="z" />
             </th>
             <th
               className="text-center py-2 px-2 text-slate-400 font-semibold cursor-pointer hover:text-slate-200 transition-colors"
@@ -157,20 +169,20 @@ export function MatrixScorecard({ data, onRowClick }: MatrixScorecardProps) {
               <td className="py-2.5 px-3 text-slate-200 font-medium max-w-[200px] truncate">
                 {point.name}
               </td>
-              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.y, 100)}`}>
-                {point.annualValue ? format.currencyAuto(point.annualValue) : point.y}
+              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.y, 10)}`}>
+                {point.annualValue ? format.currencyAuto(point.annualValue) : `${Math.round(point.y * 10) / 10}/10`}
               </td>
-              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.x, 100)}`}>
-                {point.x}
+              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.x, 10)}`}>
+                {Math.round(point.x * 10) / 10}/10
               </td>
               <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(100 - (point.timeToValue || 6) * 4, 100)}`}>
                 {point.timeToValue ? `${point.timeToValue}mo` : '—'}
               </td>
-              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity((6 - point.z) * 20, 100)}`}>
-                {point.z}/5
+              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.z * 100, 100)}`}>
+                {Math.round(point.z * 100) / 100}
               </td>
-              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.priorityScore || 0, 100)}`}>
-                {point.priorityScore || '—'}
+              <td className={`py-2.5 px-2 text-center font-mono tabular-nums rounded ${getScoreIntensity(point.priorityScore || 0, 10)}`}>
+                {point.priorityScore ? `${Math.round(point.priorityScore * 10) / 10}/10` : '—'}
               </td>
               <td className="py-2.5 px-2 text-center">
                 <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${getTierBadge(point.priorityTier)}`}>

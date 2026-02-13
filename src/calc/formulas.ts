@@ -1122,3 +1122,192 @@ export function formatHours(hours: number, includeLabel: boolean = true): string
   }
   return `${rounded.toLocaleString()}${suffix}`;
 }
+
+// ============================================================================
+// FEASIBILITY SCORE — 4-Component Weighted System (1-10 Scale)
+// Replaces the old Effort Score (1-5) + Data Readiness + Integration Complexity + Change Mgmt
+// ============================================================================
+
+export const FEASIBILITY_WEIGHTS = {
+  organizationalCapacity: 0.30,
+  dataAvailabilityQuality: 0.30,
+  technicalInfrastructure: 0.20,
+  governance: 0.20,
+} as const;
+
+/**
+ * Calculate Feasibility Score from 4 weighted components (each 1-10).
+ * Higher = more feasible to implement.
+ *
+ * Formula: (OrgCapacity × 0.30) + (DataQuality × 0.30) + (TechInfra × 0.20) + (Governance × 0.20)
+ *
+ * Components:
+ *   1. Organizational Capacity (30%): AI talent, leadership champions, change readiness
+ *   2. Data Availability & Quality (30%): System integration, data quality, digital maturity
+ *   3. Technical Infrastructure (20%): Cloud/API readiness, DevOps, modern stack
+ *   4. Governance (20%): AI ethics, model monitoring, compliance frameworks
+ */
+export function calculateFeasibilityScore(inputs: {
+  organizationalCapacity: number;     // 1-10
+  dataAvailabilityQuality: number;    // 1-10
+  technicalInfrastructure: number;    // 1-10
+  governance: number;                 // 1-10
+}): CalculationResult & {
+  organizationalCapacity: number;
+  dataAvailabilityQuality: number;
+  technicalInfrastructure: number;
+  governance: number;
+} {
+  // Clamp all inputs to 1-10
+  const oc = Math.max(1, Math.min(10, inputs.organizationalCapacity));
+  const dq = Math.max(1, Math.min(10, inputs.dataAvailabilityQuality));
+  const ti = Math.max(1, Math.min(10, inputs.technicalInfrastructure));
+  const gov = Math.max(1, Math.min(10, inputs.governance));
+
+  const score =
+    (oc * FEASIBILITY_WEIGHTS.organizationalCapacity) +
+    (dq * FEASIBILITY_WEIGHTS.dataAvailabilityQuality) +
+    (ti * FEASIBILITY_WEIGHTS.technicalInfrastructure) +
+    (gov * FEASIBILITY_WEIGHTS.governance);
+
+  // Round to 2 decimal places
+  const roundedScore = Math.round(score * 100) / 100;
+
+  return {
+    value: roundedScore,
+    organizationalCapacity: oc,
+    dataAvailabilityQuality: dq,
+    technicalInfrastructure: ti,
+    governance: gov,
+    trace: {
+      formula: `(OrgCapacity × ${FEASIBILITY_WEIGHTS.organizationalCapacity}) + (DataQuality × ${FEASIBILITY_WEIGHTS.dataAvailabilityQuality}) + (TechInfra × ${FEASIBILITY_WEIGHTS.technicalInfrastructure}) + (Governance × ${FEASIBILITY_WEIGHTS.governance})`,
+      inputs: { organizationalCapacity: oc, dataAvailabilityQuality: dq, technicalInfrastructure: ti, governance: gov },
+      intermediates: {
+        ocWeighted: oc * FEASIBILITY_WEIGHTS.organizationalCapacity,
+        dqWeighted: dq * FEASIBILITY_WEIGHTS.dataAvailabilityQuality,
+        tiWeighted: ti * FEASIBILITY_WEIGHTS.technicalInfrastructure,
+        govWeighted: gov * FEASIBILITY_WEIGHTS.governance,
+      },
+      output: roundedScore,
+    },
+  };
+}
+
+// ============================================================================
+// VALUE NORMALIZATION — Min-Max to 1-10 Scale
+// Deterministic, repeatable normalization across use cases in a report
+// ============================================================================
+
+/**
+ * Normalize an array of dollar values to a 1-10 scale using min-max normalization.
+ * Formula: Score = 1 + ((value - min) / (max - min)) × 9
+ *
+ * If all values are equal, all get 5.5.
+ * Dynamically updates when user changes values.
+ */
+export function normalizeValuesToScale(values: number[]): number[] {
+  if (values.length === 0) return [];
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+
+  if (range === 0) {
+    // All values equal — return midpoint
+    return values.map(() => 5.5);
+  }
+
+  return values.map(v => {
+    const normalized = 1 + ((v - min) / range) * 9;
+    return Math.round(normalized * 100) / 100;
+  });
+}
+
+/**
+ * Normalize a single value given the min and max of its cohort.
+ */
+export function normalizeValueToScale(value: number, min: number, max: number): number {
+  if (max === min) return 5.5;
+  const normalized = 1 + ((value - min) / (max - min)) * 9;
+  return Math.round(normalized * 100) / 100;
+}
+
+// ============================================================================
+// TTV BUBBLE SIZING — Time to Value score for matrix bubble size
+// ============================================================================
+
+/**
+ * Calculate TTV score for bubble sizing.
+ * Formula: 1 - MIN(TTV/12, 1)
+ *
+ * 3 months → 0.75 (large bubble)
+ * 10 months → 0.167 (medium bubble)
+ * 12+ months → 0 (minimum size bubble, still visible)
+ */
+export function calculateTTVBubbleScore(ttvMonths: number): number {
+  return Math.max(0, 1 - Math.min(ttvMonths / 12, 1));
+}
+
+// ============================================================================
+// NEW PRIORITY SCORING — Simple 50/50 Feasibility + Value
+// Replaces the 5-criterion weighted matrix
+// ============================================================================
+
+export const NEW_PRIORITY_TIERS = {
+  TIER_1: { label: 'Tier 1 — Champions' },
+  TIER_2: { label: 'Tier 2 — Quick Wins' },
+  TIER_3: { label: 'Tier 3 — Strategic' },
+  TIER_4: { label: 'Tier 4 — Foundation' },
+} as const;
+
+/**
+ * New Priority Score = (Feasibility Score × 0.5) + (Normalized Value Score × 0.5)
+ * Both inputs on 1-10 scale → output is 1-10
+ */
+export function calculateNewPriorityScore(inputs: {
+  feasibilityScore: number;  // 1-10
+  normalizedValue: number;   // 1-10
+}): CalculationResult {
+  const fs = Math.max(1, Math.min(10, inputs.feasibilityScore));
+  const nv = Math.max(1, Math.min(10, inputs.normalizedValue));
+
+  const score = (fs * 0.5) + (nv * 0.5);
+  const roundedScore = Math.round(score * 100) / 100;
+
+  return {
+    value: roundedScore,
+    trace: {
+      formula: '(Feasibility × 0.5) + (NormalizedValue × 0.5)',
+      inputs: { feasibilityScore: fs, normalizedValue: nv },
+      output: roundedScore,
+    },
+  };
+}
+
+/**
+ * New Priority Tier Assignment — aligned with matrix quadrants
+ * Tier 1 Champions: Priority >= 7.5
+ * Tier 2 Quick Wins: Value < 5.5 AND Feasibility >= 5.5
+ * Tier 3 Strategic: Value >= 5.5 AND Feasibility < 5.5
+ * Tier 4 Foundation: everything else (Priority < 5.0)
+ */
+export function getNewPriorityTier(
+  priorityScore: number,
+  normalizedValue: number,
+  feasibilityScore: number
+): string {
+  if (priorityScore >= 7.5) return NEW_PRIORITY_TIERS.TIER_1.label;
+  if (normalizedValue < 5.5 && feasibilityScore >= 5.5) return NEW_PRIORITY_TIERS.TIER_2.label;
+  if (normalizedValue >= 5.5 && feasibilityScore < 5.5) return NEW_PRIORITY_TIERS.TIER_3.label;
+  return NEW_PRIORITY_TIERS.TIER_4.label;
+}
+
+/**
+ * Recommended phase based on new priority and feasibility
+ */
+export function getNewRecommendedPhase(priorityScore: number, feasibilityScore: number): string {
+  if (priorityScore >= 7.5 && feasibilityScore >= 6) return 'Q1';
+  if (priorityScore >= 6.0 && feasibilityScore >= 5) return 'Q2';
+  if (priorityScore >= 4.5) return 'Q3';
+  return 'Q4';
+}

@@ -7,15 +7,21 @@ import { chartColors } from './chart-config';
 
 interface MatrixDataPoint {
   name: string;
-  x: number;
-  y: number;
-  z: number;
+  x: number;  // Feasibility Score (1-10)
+  y: number;  // Normalized Annual Value (1-10)
+  z: number;  // TTV bubble score (0-1)
   type: string;
   color: string;
   timeToValue?: number;
   priorityTier?: string;
   priorityScore?: number;
   annualValue?: number;
+  feasibilityScore?: number;
+  normalizedValue?: number;
+  organizationalCapacity?: number;
+  dataAvailabilityQuality?: number;
+  technicalInfrastructure?: number;
+  governance?: number;
   dataReadiness?: number;
   integrationComplexity?: number;
   changeMgmt?: number;
@@ -35,12 +41,19 @@ const QUADRANT_COLORS = chartColors.quadrant;
 
 const QUADRANT_LABELS = [
   { label: 'Champions', x: 'right', y: 'top', color: QUADRANT_COLORS.champion },
-  { label: 'Strategic Bets', x: 'left', y: 'top', color: QUADRANT_COLORS.strategicBet },
+  { label: 'Strategic', x: 'left', y: 'top', color: QUADRANT_COLORS.strategicBet },
   { label: 'Quick Wins', x: 'right', y: 'bottom', color: QUADRANT_COLORS.quickWin },
-  { label: 'Foundation', x: 'left', y: 'bottom', color: QUADRANT_COLORS.foundation },
+  { label: 'Foundations', x: 'left', y: 'bottom', color: QUADRANT_COLORS.foundation },
 ] as const;
 
 function getTierColorValue(tier?: string): string {
+  if (!tier) return TIER_COLORS.medium;
+  // New tier names
+  if (tier.includes('Champion')) return TIER_COLORS.critical;
+  if (tier.includes('Quick Win')) return TIER_COLORS.high;
+  if (tier.includes('Strategic')) return TIER_COLORS.medium;
+  if (tier.includes('Foundation')) return TIER_COLORS.low;
+  // Legacy tier names
   switch (tier) {
     case 'Critical': return TIER_COLORS.critical;
     case 'High': return TIER_COLORS.high;
@@ -51,6 +64,12 @@ function getTierColorValue(tier?: string): string {
 }
 
 function getTierBadgeClasses(tier?: string): string {
+  if (!tier) return 'bg-slate-400 text-white';
+  if (tier.includes('Champion')) return 'bg-emerald-700 text-white';
+  if (tier.includes('Quick Win')) return 'bg-teal-600 text-white';
+  if (tier.includes('Strategic')) return 'bg-blue-700 text-white';
+  if (tier.includes('Foundation')) return 'bg-slate-500 text-white';
+  // Legacy
   switch (tier) {
     case 'Critical': return 'bg-slate-900 text-white';
     case 'High': return 'bg-blue-700 text-white';
@@ -84,26 +103,26 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
 
   const { width, height } = dimensions;
 
-  // D3 scales
+  // D3 scales — 1-10 domain for both axes
   const xScale = useMemo(
-    () => scaleLinear().domain([0, 100]).range([MARGIN.left, width - MARGIN.right]),
+    () => scaleLinear().domain([1, 10]).range([MARGIN.left, width - MARGIN.right]),
     [width]
   );
   const yScale = useMemo(
-    () => scaleLinear().domain([0, 100]).range([height - MARGIN.bottom, MARGIN.top]),
+    () => scaleLinear().domain([1, 10]).range([height - MARGIN.bottom, MARGIN.top]),
     [height]
   );
 
-  // TTV bubble sizing: scaleSqrt for area-proportional encoding
-  // Inverted: shorter TTV (faster) → larger bubble
+  // TTV bubble sizing: z is TTV score (0-1), where 1 = fastest payback = largest bubble
+  // Minimum visible radius for TTV=0 cases
+  const MIN_BUBBLE_RADIUS = 4;
+  const MAX_BUBBLE_RADIUS = Math.min(36, width / 25);
   const sizeScale = useMemo(() => {
-    const ttvValues = data.map(d => d.timeToValue || 6);
-    const maxTTV = Math.max(...ttvValues, 24);
     return scaleSqrt()
-      .domain([maxTTV, 1])
-      .range([6, Math.min(36, width / 25)])
+      .domain([0, 1])
+      .range([MIN_BUBBLE_RADIUS, MAX_BUBBLE_RADIUS])
       .clamp(true);
-  }, [data, width]);
+  }, [width]);
 
   // Voronoi for hover detection
   const delaunay = useMemo(() => {
@@ -124,7 +143,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
     const bx = xScale(data[idx].x);
     const by = yScale(data[idx].y);
     const dist = Math.sqrt((mx - bx) ** 2 + (my - by) ** 2);
-    const bubbleRadius = sizeScale(data[idx].timeToValue || 6);
+    const bubbleRadius = sizeScale(data[idx].z || 0.5);
 
     if (dist < bubbleRadius + 40) {
       setHoveredIndex(idx);
@@ -138,8 +157,8 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
     setHoveredIndex(null);
   }, []);
 
-  const midX = xScale(50);
-  const midY = yScale(50);
+  const midX = xScale(5.5);
+  const midY = yScale(5.5);
 
   const hoveredPoint = hoveredIndex !== null ? data[hoveredIndex] : null;
 
@@ -203,7 +222,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fill={QUADRANT_COLORS.strategicBet}
           opacity={0.7}
         >
-          Strategic Bets
+          Strategic
         </text>
         <text
           x={midX + (width - MARGIN.right - midX) / 2}
@@ -238,8 +257,8 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           stroke="#475569" strokeDasharray="6 4" strokeWidth={1.5} opacity={0.6}
         />
 
-        {/* X-axis ticks and labels */}
-        {[0, 25, 50, 75, 100].map(v => (
+        {/* X-axis ticks and labels (1-10 scale) */}
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
           <g key={`x-${v}`}>
             <line
               x1={xScale(v)} y1={height - MARGIN.bottom}
@@ -264,11 +283,11 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fontWeight={600}
           fill="#94a3b8"
         >
-          Implementation Readiness →
+          Feasibility Score →
         </text>
 
-        {/* Y-axis ticks and labels */}
-        {[0, 25, 50, 75, 100].map(v => (
+        {/* Y-axis ticks and labels (1-10 scale) */}
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
           <g key={`y-${v}`}>
             <line
               x1={MARGIN.left - 5} y1={yScale(v)}
@@ -294,7 +313,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fill="#94a3b8"
           transform={`rotate(-90, 14, ${(MARGIN.top + height - MARGIN.bottom) / 2})`}
         >
-          Strategic Value →
+          Normalized Annual Value →
         </text>
 
         {/* Axis lines */}
@@ -313,7 +332,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
         {data.map((point, i) => {
           const cx = xScale(point.x);
           const cy = yScale(point.y);
-          const r = sizeScale(point.timeToValue || point.z * 4 || 6);
+          const r = sizeScale(point.z);  // z = TTV bubble score (0-1)
           const fillColor = point.priorityTier
             ? getTierColorValue(point.priorityTier)
             : point.color;
@@ -344,7 +363,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
         {data.length <= 12 && data.map((point, i) => {
           const cx = xScale(point.x);
           const cy = yScale(point.y);
-          const r = sizeScale(point.timeToValue || point.z * 4 || 6);
+          const r = sizeScale(point.z);
           const isDimmed = hoveredIndex !== null && hoveredIndex !== i;
           const labelText = point.name.length > 22
             ? point.name.slice(0, 20) + '...'
@@ -387,31 +406,36 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
               <p className="font-bold text-sm mb-1 leading-tight">{hoveredPoint.name}</p>
               {hoveredPoint.priorityTier && (
                 <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-2 ${getTierBadgeClasses(hoveredPoint.priorityTier)}`}>
-                  {hoveredPoint.priorityTier} Priority
+                  {hoveredPoint.priorityTier}
                 </span>
               )}
               <div className="h-px bg-slate-100 my-2" />
+              {/* Show actual dollar amount prominently */}
+              {hoveredPoint.annualValue != null && hoveredPoint.annualValue > 0 && (
+                <div className="mb-2">
+                  <span className="text-slate-400 text-[10px] block">Annual Value</span>
+                  <span className="font-bold text-slate-900 text-sm">{format.currencyAuto(hoveredPoint.annualValue)}</span>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                 <div>
-                  <span className="text-slate-400 block">Business Value</span>
-                  <span className="font-semibold text-slate-700">
-                    {hoveredPoint.annualValue ? format.currencyAuto(hoveredPoint.annualValue) : `${hoveredPoint.y}/100`}
-                  </span>
+                  <span className="text-slate-400 block">Value Score</span>
+                  <span className="font-semibold text-slate-700">{Math.round(hoveredPoint.y * 10) / 10}/10</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Readiness</span>
-                  <span className="font-semibold text-slate-700">{hoveredPoint.x}/100</span>
+                  <span className="text-slate-400 block">Feasibility</span>
+                  <span className="font-semibold text-slate-700">{Math.round(hoveredPoint.x * 10) / 10}/10</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block">Time to Value</span>
                   <span className="font-semibold text-slate-700">
-                    {hoveredPoint.timeToValue ? format.duration(hoveredPoint.timeToValue) : `Effort ${hoveredPoint.z}/5`}
+                    {hoveredPoint.timeToValue ? format.duration(hoveredPoint.timeToValue) : '—'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Priority Score</span>
+                  <span className="text-slate-400 block">Priority</span>
                   <span className="font-semibold text-slate-700">
-                    {hoveredPoint.priorityScore ? `${hoveredPoint.priorityScore}/100` : '—'}
+                    {hoveredPoint.priorityScore ? `${Math.round(hoveredPoint.priorityScore * 10) / 10}/10` : '—'}
                   </span>
                 </div>
               </div>
@@ -428,7 +452,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
 
       {/* Tier legend */}
       <div className="flex flex-wrap justify-center gap-4 mt-3 text-[11px]">
-        {(['Critical', 'High', 'Medium', 'Low'] as const).map(tier => (
+        {(['Champions', 'Quick Wins', 'Strategic', 'Foundations'] as const).map(tier => (
           <div key={tier} className="flex items-center gap-1.5 text-slate-400">
             <div
               className="w-2.5 h-2.5 rounded-full"

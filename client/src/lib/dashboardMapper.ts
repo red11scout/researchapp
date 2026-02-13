@@ -96,43 +96,30 @@ function getComplexityLabel(score: number): string {
 }
 
 // ============================================================================
-// VALUE-READINESS MATRIX: Calculate Implementation Readiness composite score
+// VALUE-FEASIBILITY MATRIX: New scoring system (1-10 scale)
 // ============================================================================
-function calculateReadinessScore(
-  dataReadiness: number,
-  integrationComplexity: number,
-  changeMgmt: number,
-): number {
-  // Higher scores = MORE ready to implement
-  // Data Readiness is 1-5 where 5=best → use as-is
-  // Integration Complexity is 1-5 where 5=worst → invert: (6 - score)
-  // Change Mgmt is 1-5 where 5=worst → invert: (6 - score)
-  const dataReady = dataReadiness || 3;
-  const intReady = (6 - (integrationComplexity || 3));
-  const changeReady = (6 - (changeMgmt || 3));
 
-  // Weighted composite, normalized to 0-100
-  const composite = (dataReady * 0.40 + intReady * 0.35 + changeReady * 0.25);
-  return Math.round((composite / 5) * 100);
+// Normalize annual values to 1-10 scale using min-max normalization
+function normalizeValuesToScale(values: number[]): number[] {
+  if (values.length === 0) return [];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max === min) return values.map(() => 5.5);
+  return values.map(v => Math.round((1 + ((v - min) / (max - min)) * 9) * 10) / 10);
 }
 
-function calculateBusinessValueScore(annualValue: number, maxValue: number): number {
-  if (maxValue === 0) return 50;
-  // Normalize to 0-100 scale
-  return Math.round(Math.min((annualValue / maxValue) * 100, 100));
-}
-
-function getQuadrantType(valueScore: number, readinessScore: number): string {
-  if (valueScore >= 50 && readinessScore >= 50) return "Champion";
-  if (valueScore >= 50 && readinessScore < 50) return "Strategic Bet";
-  if (valueScore < 50 && readinessScore >= 50) return "Quick Win";
+// Get quadrant type based on new thresholds (5.5 midpoint on 1-10 scale)
+function getQuadrantType(normalizedValue: number, feasibilityScore: number): string {
+  if (normalizedValue >= 5.5 && feasibilityScore >= 5.5) return "Champion";
+  if (normalizedValue >= 5.5 && feasibilityScore < 5.5) return "Strategic";
+  if (normalizedValue < 5.5 && feasibilityScore >= 5.5) return "Quick Win";
   return "Foundation";
 }
 
 function getQuadrantColor(type: string): string {
   switch (type) {
     case "Champion": return BRAND.success;
-    case "Strategic Bet": return BRAND.primary;
+    case "Strategic": return BRAND.primary;
     case "Quick Win": return BRAND.teal;
     case "Foundation": return BRAND.gray;
     default: return BRAND.accent;
@@ -140,6 +127,11 @@ function getQuadrantColor(type: string): string {
 }
 
 function getTierColor(tier: string): string {
+  if (tier.includes('Champion')) return BRAND.success;
+  if (tier.includes('Quick Win')) return BRAND.teal;
+  if (tier.includes('Strategic')) return BRAND.primary;
+  if (tier.includes('Foundation')) return BRAND.gray;
+  // Legacy tier names
   switch (tier) {
     case 'Critical': return '#0F172A';
     case 'High': return BRAND.primary;
@@ -149,15 +141,9 @@ function getTierColor(tier: string): string {
   }
 }
 
-function getPriorityTier(priorityScore: number, effortScore: number): string {
-  // Use priorityScore if available (0-100), otherwise derive from effortScore (1-5)
-  if (priorityScore > 0) {
-    if (priorityScore >= 75) return 'Critical';
-    if (priorityScore >= 60) return 'High';
-    if (priorityScore >= 45) return 'Medium';
-    return 'Low';
-  }
-  return getComplexityLabel(effortScore);
+// TTV bubble sizing: 1 - MIN(TTV/12, 1), with minimum visible size
+function calculateTTVBubbleScore(ttvMonths: number): number {
+  return Math.max(0, 1 - Math.min(ttvMonths / 12, 1));
 }
 
 // ============================================================================
@@ -292,17 +278,25 @@ function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: 
   function?: string;
   description?: string;
   tags: string[];
-  effortScore?: number;
+  feasibilityScore?: number;
   timeToValue?: number;
   monthlyTokens?: number;
+  organizationalCapacity?: number;
+  dataAvailabilityQuality?: number;
+  technicalInfrastructure?: number;
+  governance?: number;
+  // Legacy fields for backward compat
+  effortScore?: number;
   dataReadiness?: number;
   integrationComplexity?: number;
   changeMgmt?: number;
 } {
   const result: {
     function?: string; description?: string; tags: string[];
-    effortScore?: number; timeToValue?: number; monthlyTokens?: number;
-    dataReadiness?: number; integrationComplexity?: number; changeMgmt?: number;
+    feasibilityScore?: number; timeToValue?: number; monthlyTokens?: number;
+    organizationalCapacity?: number; dataAvailabilityQuality?: number;
+    technicalInfrastructure?: number; governance?: number;
+    effortScore?: number; dataReadiness?: number; integrationComplexity?: number; changeMgmt?: number;
   } = { tags: [] };
 
   const step4 = steps.find(s => s.step === 4);
@@ -325,17 +319,27 @@ function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: 
       e["Use Case"] === useCaseName || e.useCase === useCaseName
     );
     if (effort) {
-      result.effortScore = effort["Effort Score (1-5)"] || effort["Effort Score"] || effort.effortScore || 3;
+      // New 4-component system (1-10 scale)
+      result.feasibilityScore = effort["Feasibility Score"] || effort.feasibilityScore;
+      result.organizationalCapacity = effort["Organizational Capacity"];
+      result.dataAvailabilityQuality = effort["Data Availability & Quality"];
+      result.technicalInfrastructure = effort["Technical Infrastructure"];
+      result.governance = effort["Governance"];
+
+      // Legacy fields (backward compat)
+      result.effortScore = effort["Effort Score (1-5)"] || effort["Effort Score"] || effort.effortScore;
+      result.dataReadiness = effort["Data Readiness (1-5)"] || effort["Data Readiness"] || effort.dataReadiness;
+      result.integrationComplexity = effort["Integration Complexity (1-5)"] || effort["Integration Complexity"] || effort.integrationComplexity;
+      result.changeMgmt = effort["Change Mgmt (1-5)"] || effort["Change Mgmt"] || effort.changeMgmt;
+
       // Extract Time-to-Value with multiple field name variants
-      const ttv = effort["Time-to-Value (months)"] ??
+      const ttv = effort["Time To Value"] ??
+                  effort["Time-to-Value (months)"] ??
                   effort["Time-to-Value"] ??
                   effort.timeToValue ??
                   6;
       result.timeToValue = typeof ttv === 'string' ? parseInt(ttv, 10) : (ttv || 6);
       result.monthlyTokens = effort["Monthly Tokens"] || effort.monthlyTokens || 0;
-      result.dataReadiness = effort["Data Readiness (1-5)"] || effort["Data Readiness"] || effort.dataReadiness || 3;
-      result.integrationComplexity = effort["Integration Complexity (1-5)"] || effort["Integration Complexity"] || effort.integrationComplexity || 3;
-      result.changeMgmt = effort["Change Mgmt (1-5)"] || effort["Change Mgmt"] || effort.changeMgmt || 3;
     }
   }
 
@@ -435,41 +439,55 @@ export function mapReportToDashboardData(report: Report): DashboardData {
   // NEW: Generate structured Value Driver insights
   const insights = generateValueInsights(dashboard);
 
-  // NEW: Value-Readiness Matrix with composite readiness scoring
+  // NEW: Value-Feasibility Matrix (1-10 scale, min-max normalization)
   const matrixData: MatrixDataPoint[] = [];
   if (dashboard.topUseCases && dashboard.topUseCases.length > 0) {
-    // Find max annual value for normalization
-    const maxAnnualValue = Math.max(...dashboard.topUseCases.map(uc => uc.annualValue || 0), 1);
+    // Step 1: Normalize annual values to 1-10 scale using min-max
+    const annualValues = dashboard.topUseCases.map(uc => uc.annualValue || 0);
+    const normalizedValues = normalizeValuesToScale(annualValues);
 
-    dashboard.topUseCases.forEach((uc) => {
+    // Step 2: Read feasibility scores from Step 7 data (already computed by postprocessor)
+    const step7Data = analysis.steps.find(s => s.step === 7)?.data;
+
+    dashboard.topUseCases.forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
-      const effortScore = details.effortScore || 3;
-      const dataReadiness = details.dataReadiness || 3;
-      const integrationComplexity = details.integrationComplexity || 3;
-      const changeMgmt = details.changeMgmt || 3;
+      const normalizedValue = normalizedValues[idx] ?? 5.5;
 
-      // Calculate composite scores
-      const readinessScore = calculateReadinessScore(dataReadiness, integrationComplexity, changeMgmt);
-      const businessValueScore = calculateBusinessValueScore(uc.annualValue || 0, maxAnnualValue);
-      const type = getQuadrantType(businessValueScore, readinessScore);
+      // Get feasibility score: prefer Step 7 data (computed by postprocessor), then Step 6 details
+      let feasibilityScore = details.feasibilityScore ?? 5;
+      let priorityTier = "Foundation";
 
-      const tier = getPriorityTier(uc.priorityScore || 0, effortScore);
+      if (step7Data && Array.isArray(step7Data)) {
+        const step7Record = step7Data.find((r: any) =>
+          r["Use Case"] === uc.useCase || r.useCase === uc.useCase
+        );
+        if (step7Record) {
+          feasibilityScore = step7Record["Feasibility Score"] ?? feasibilityScore;
+          priorityTier = step7Record["Priority Tier"] ?? priorityTier;
+        }
+      }
+
+      const type = getQuadrantType(normalizedValue, feasibilityScore);
+      const ttvScore = calculateTTVBubbleScore(details.timeToValue || 6);
 
       matrixData.push({
         name: uc.useCase,
-        x: readinessScore,
-        y: businessValueScore,
-        z: effortScore,
+        x: feasibilityScore,       // X-axis: Feasibility Score (1-10)
+        y: normalizedValue,         // Y-axis: Normalized Annual Value (1-10)
+        z: ttvScore,                // Bubble size: TTV score (0-1, higher = faster)
         type,
-        color: getTierColor(tier),
+        color: getTierColor(priorityTier),
         // Enriched fields for consulting-grade bubble chart
         timeToValue: details.timeToValue || 6,
-        priorityTier: tier,
+        priorityTier,
         priorityScore: uc.priorityScore || 0,
         annualValue: uc.annualValue || 0,
-        dataReadiness,
-        integrationComplexity,
-        changeMgmt,
+        feasibilityScore,
+        normalizedValue,
+        organizationalCapacity: details.organizationalCapacity,
+        dataAvailabilityQuality: details.dataAvailabilityQuality,
+        technicalInfrastructure: details.technicalInfrastructure,
+        governance: details.governance,
         monthlyTokens: details.monthlyTokens || uc.monthlyTokens || 0,
         description: details.description,
       });
@@ -539,8 +557,8 @@ export function mapReportToDashboardData(report: Report): DashboardData {
       insights,
     },
     priorityMatrix: {
-      title: "Value-Readiness Matrix",
-      description: "Initiatives mapped by Business Value vs. Implementation Readiness.\nBubble size indicates Implementation Effort (smaller = easier).",
+      title: "Value-Feasibility Matrix",
+      description: "Initiatives mapped by Normalized Annual Value vs. Feasibility Score.\nBubble size indicates Time-to-Value (larger = faster payback).",
       data: matrixData
     },
     useCases: {

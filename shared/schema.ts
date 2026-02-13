@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, real, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -119,6 +119,46 @@ export const insertBatchResearchJobSchema = createInsertSchema(batchResearchJobs
 });
 export type InsertBatchResearchJob = z.infer<typeof insertBatchResearchJobSchema>;
 export type BatchResearchJob = typeof batchResearchJobs.$inferSelect;
+
+// ============================================
+// INTERACTIVE EDITING: User sessions and edits
+// Anonymous browser-based sessions (no auth required)
+// ============================================
+export const userSessions = pgTable("user_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reportId: varchar("report_id").notNull(),
+  browserToken: text("browser_token").notNull(),  // localStorage UUID, no auth required
+  sessionName: text("session_name").default("Default Session"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertUserSession = z.infer<typeof insertUserSessionSchema>;
+export type UserSession = typeof userSessions.$inferSelect;
+
+export const userEdits = pgTable("user_edits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  reportId: varchar("report_id").notNull(),
+  stepNumber: integer("step_number").notNull(),
+  useCaseId: text("use_case_id"),       // e.g. "UC-01"
+  fieldPath: text("field_path").notNull(), // e.g. "Annual Hours" or "Organizational Capacity"
+  originalValue: text("original_value").notNull(),
+  editedValue: text("edited_value").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertUserEditSchema = createInsertSchema(userEdits).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertUserEdit = z.infer<typeof insertUserEditSchema>;
+export type UserEdit = typeof userEdits.$inferSelect;
 
 // Parent categories for hierarchical organization (per document Section 3)
 export const PARENT_CATEGORIES = [

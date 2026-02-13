@@ -24,6 +24,13 @@ import {
   calculateFrictionRecovery,
   generateThreeScenarioSummary,
   calculateMultiYearProjection,
+  calculateFeasibilityScore,
+  normalizeValuesToScale,
+  normalizeValueToScale,
+  calculateTTVBubbleScore,
+  calculateNewPriorityScore,
+  getNewPriorityTier,
+  getNewRecommendedPhase,
   DEFAULT_MULTIPLIERS,
   INPUT_BOUNDS,
   validateInputs,
@@ -122,6 +129,9 @@ interface Step3Record {
   "Estimated Annual Cost ($)"?: string;
   "Annual Hours"?: number | string;
   "Hourly Rate"?: number | string;
+  "Loaded Hourly Rate"?: number | string;
+  "Role"?: string;
+  "Role ID"?: string;
   "Cost Formula"?: string;
   "Target Friction"?: string; // Link to Step 4
 }
@@ -156,7 +166,13 @@ interface Step5Record {
 interface Step6Record {
   ID: string;
   "Use Case": string;
-  // Support both original (1-5) suffix and normalized names
+  // NEW 4-component system (1-10 scale)
+  "Organizational Capacity"?: number;
+  "Data Availability & Quality"?: number;
+  "Technical Infrastructure"?: number;
+  "Governance"?: number;
+  "Feasibility Score"?: number;
+  // Legacy fields (1-5 scale) — backward compatible
   "Data Readiness (1-5)"?: number;
   "Data Readiness"?: number;
   "Integration Complexity (1-5)"?: number;
@@ -180,12 +196,18 @@ interface Step6Record {
 interface Step7Record {
   ID: string;
   "Use Case": string;
+  // New scoring system (1-10 scale)
+  "Priority Score"?: number;
+  "Feasibility Score"?: number;
+  "Value Score"?: number;
+  "TTV Score"?: number;
+  "Priority Tier"?: string;
+  "Recommended Phase"?: string;
+  // Legacy fields — backward compatible
   "Value Score (0-40)"?: number;
   "TTV Score (0-30)"?: number;
   "Effort Score (0-30)"?: number;
   "Priority Score (0-100)"?: number;
-  "Priority Tier"?: string;
-  "Recommended Phase"?: string;
   "Strategic Theme"?: string;
   [key: string]: any;
 }
@@ -256,6 +278,125 @@ function extractInputNumbers(formula: string): number[] {
   }
 
   return numbers;
+}
+
+// ============================================
+// STRUCTURED FORMULA LABELS: Extract inputs from AI-generated structured labels
+// These are preferred over raw formula string parsing for reliability
+// ============================================
+interface FormulaLabelsObj {
+  components?: Array<{ label: string; value: number | string }>;
+}
+
+function extractFromStructuredLabels(labels: FormulaLabelsObj | string | undefined, labelMap: Record<string, string>): Record<string, number> | null {
+  if (!labels) return null;
+
+  let parsed: FormulaLabelsObj;
+  if (typeof labels === 'string') {
+    try { parsed = JSON.parse(labels); } catch { return null; }
+  } else {
+    parsed = labels;
+  }
+
+  if (!parsed.components || !Array.isArray(parsed.components)) return null;
+
+  const result: Record<string, number> = {};
+  for (const comp of parsed.components) {
+    const val = typeof comp.value === 'string' ? parseFloat(comp.value.replace(/[$,]/g, '')) : comp.value;
+    if (isNaN(val)) continue;
+
+    // Match component label to our expected field using labelMap
+    for (const [expected, key] of Object.entries(labelMap)) {
+      if (comp.label.toLowerCase().includes(expected.toLowerCase())) {
+        result[key] = val;
+        break;
+      }
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function parseCostFromLabels(labels: FormulaLabelsObj | string | undefined): CostInputs | null {
+  const extracted = extractFromStructuredLabels(labels, {
+    'hours': 'hoursSaved',
+    'hourly rate': 'loadedHourlyRate',
+    'rate': 'loadedHourlyRate',
+    'benefits loading': 'efficiencyMultiplier',
+    'loading': 'efficiencyMultiplier',
+    'adoption': 'adoptionMultiplier',
+    'data maturity': 'dataMaturityMultiplier',
+    'maturity': 'dataMaturityMultiplier',
+  });
+  if (!extracted || !extracted.hoursSaved) return null;
+  return {
+    hoursSaved: extracted.hoursSaved,
+    loadedHourlyRate: extracted.loadedHourlyRate || DEFAULT_MULTIPLIERS.loadedHourlyRate,
+    efficiencyMultiplier: extracted.efficiencyMultiplier || 1.35,
+    adoptionMultiplier: extracted.adoptionMultiplier || DEFAULT_MULTIPLIERS.costRealizationMultiplier,
+    dataMaturityMultiplier: extracted.dataMaturityMultiplier || DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+  };
+}
+
+function parseRevenueFromLabels(labels: FormulaLabelsObj | string | undefined): RevenueInputs | null {
+  const extracted = extractFromStructuredLabels(labels, {
+    'uplift': 'upliftPct',
+    'revenue at risk': 'baselineRevenueAtRisk',
+    'pipeline': 'baselineRevenueAtRisk',
+    'realization': 'revenueRealizationMultiplier',
+    'data maturity': 'dataMaturityMultiplier',
+    'maturity': 'dataMaturityMultiplier',
+  });
+  if (!extracted || !extracted.upliftPct || !extracted.baselineRevenueAtRisk) return null;
+  return {
+    upliftPct: extracted.upliftPct,
+    baselineRevenueAtRisk: extracted.baselineRevenueAtRisk,
+    marginPct: 1.0, // Revenue formula uses full revenue at risk
+    revenueRealizationMultiplier: extracted.revenueRealizationMultiplier || DEFAULT_MULTIPLIERS.revenueRealizationMultiplier,
+    dataMaturityMultiplier: extracted.dataMaturityMultiplier || DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+  };
+}
+
+function parseCashFlowFromLabels(labels: FormulaLabelsObj | string | undefined): CashFlowInputs | null {
+  const extracted = extractFromStructuredLabels(labels, {
+    'annual revenue': 'annualRevenue',
+    'revenue': 'annualRevenue',
+    'days improved': 'daysImprovement',
+    'days': 'daysImprovement',
+    'cost of capital': 'costOfCapital',
+    'capital': 'costOfCapital',
+    'realization': 'cashFlowRealizationMultiplier',
+  });
+  if (!extracted || !extracted.annualRevenue || !extracted.daysImprovement) return null;
+  return {
+    daysImprovement: extracted.daysImprovement,
+    annualRevenue: extracted.annualRevenue,
+    costOfCapital: extracted.costOfCapital || DEFAULT_MULTIPLIERS.defaultCostOfCapital,
+    cashFlowRealizationMultiplier: extracted.cashFlowRealizationMultiplier || DEFAULT_MULTIPLIERS.cashFlowRealizationMultiplier,
+    dataMaturityMultiplier: DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+  };
+}
+
+function parseRiskFromLabels(labels: FormulaLabelsObj | string | undefined): RiskInputs | null {
+  const extracted = extractFromStructuredLabels(labels, {
+    'risk reduction': 'riskReductionPct',
+    'reduction': 'riskReductionPct',
+    'risk exposure': 'riskExposure',
+    'exposure': 'riskExposure',
+    'realization': 'riskRealizationMultiplier',
+    'data maturity': 'dataMaturityMultiplier',
+    'maturity': 'dataMaturityMultiplier',
+  });
+  if (!extracted || !extracted.riskReductionPct || !extracted.riskExposure) return null;
+  // Map to RiskInputs — risk uses probBefore/impactBefore/probAfter/impactAfter but we convert
+  return {
+    probBefore: 1.0,
+    impactBefore: extracted.riskExposure,
+    probAfter: 1.0 - extracted.riskReductionPct,
+    impactAfter: extracted.riskExposure,
+    riskRealizationMultiplier: extracted.riskRealizationMultiplier || DEFAULT_MULTIPLIERS.riskRealizationMultiplier,
+    dataMaturityMultiplier: extracted.dataMaturityMultiplier || DEFAULT_MULTIPLIERS.dataMaturityMultiplier,
+  };
 }
 
 // Categorize numbers into formula inputs based on typical ranges
@@ -660,6 +801,9 @@ function parseFrictionCostInputs(costText: string): { annualHours: number; loade
 }
 
 // Recalculate friction point cost using deterministic formula
+// CRITICAL: Uses the role-specific loaded hourly rate from the standardized roles table,
+// NOT the $150 default. The record's "Hourly Rate" field is set by verifyAndNormalizeRoles()
+// which runs BEFORE this function.
 function recalculateFrictionCost(record: Step3Record): {
   value: number;
   formulaText: string;
@@ -670,24 +814,39 @@ function recalculateFrictionCost(record: Step3Record): {
   const costText = record["Estimated Annual Cost ($)"] || "";
   const existingHours = record["Annual Hours"];
   const existingRate = record["Hourly Rate"];
+  // Also check "Loaded Hourly Rate" field (may be string like "$50/hr")
+  const loadedRateField = (record as any)["Loaded Hourly Rate"];
 
   let annualHours: number = 0;
-  let loadedHourlyRate: number = DEFAULT_MULTIPLIERS.loadedHourlyRate;
+  let loadedHourlyRate: number = 0; // Start at 0 — will be set from role data
 
-  // Try to use explicit inputs if available
+  // PRIORITY 1: Use the "Hourly Rate" field (set by verifyAndNormalizeRoles to the standardized rate)
+  if (existingRate !== undefined && existingRate !== 0) {
+    loadedHourlyRate = typeof existingRate === "number" ? existingRate : parseFloat(String(existingRate).replace(/[$,/hr]/g, "")) || 0;
+  }
+
+  // PRIORITY 2: If "Hourly Rate" was 0/missing, try "Loaded Hourly Rate" field from JSON
+  if (loadedHourlyRate === 0 && loadedRateField) {
+    loadedHourlyRate = typeof loadedRateField === "number" ? loadedRateField : parseFloat(String(loadedRateField).replace(/[$,/hr]/g, "")) || 0;
+  }
+
+  // PRIORITY 3: Only fall back to default if we truly have no role-specific rate
+  if (loadedHourlyRate === 0) {
+    console.warn(`[recalculateFrictionCost] No role-specific rate found for "${record["Friction Point"]?.substring(0, 40)}...", falling back to $${DEFAULT_MULTIPLIERS.loadedHourlyRate}/hr`);
+    loadedHourlyRate = DEFAULT_MULTIPLIERS.loadedHourlyRate;
+  }
+
+  // Try to use explicit hours if available
   if (existingHours !== undefined) {
     annualHours = typeof existingHours === "number" ? existingHours : parseFloat(String(existingHours).replace(/,/g, "")) || 0;
   }
-  if (existingRate !== undefined) {
-    loadedHourlyRate = typeof existingRate === "number" ? existingRate : parseFloat(String(existingRate).replace(/[$,]/g, "")) || DEFAULT_MULTIPLIERS.loadedHourlyRate;
-  }
 
-  // If no explicit inputs, try to parse from the cost text
+  // If no explicit hours, try to parse from the cost text
   if (annualHours === 0) {
     const parsed = parseFrictionCostInputs(costText);
     if (parsed) {
       annualHours = parsed.annualHours;
-      loadedHourlyRate = parsed.loadedHourlyRate;
+      // Do NOT override loadedHourlyRate from formula text — keep role-specific rate
     }
   }
 
@@ -776,13 +935,52 @@ export function postProcessAnalysis(analysisResult: any): any {
   }
 
   // ============================================
+  // FUNCTION/SUB-FUNCTION NORMALIZATION (Steps 2, 3, 4)
+  // MUST run BEFORE friction cost processing so role rates are standardized
+  // ============================================
+  const step2 = steps.find((s: any) => s.step === 2);
+
+  // Normalize Step 2 (KPIs)
+  if (step2?.data && Array.isArray(step2.data)) {
+    for (const record of step2.data) {
+      if (record["Function"]) {
+        record["Function"] = normalizeFunctionName(record["Function"]);
+      }
+      if (record["Sub-Function"]) {
+        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
+      }
+    }
+    console.log(`[postProcessAnalysis] Normalized ${step2.data.length} Step 2 Function/Sub-Function values`);
+  }
+
+  // Normalize Step 3 (Friction Points) — functions, sub-functions, AND roles
+  if (step3?.data && Array.isArray(step3.data)) {
+    for (const record of step3.data) {
+      if (record["Function"]) {
+        record["Function"] = normalizeFunctionName(record["Function"]);
+      }
+      if (record["Sub-Function"]) {
+        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
+      }
+    }
+    console.log(`[postProcessAnalysis] Normalized ${step3.data.length} Step 3 Function/Sub-Function values`);
+
+    // Normalize roles to standardized table — updates Hourly Rate to role-specific rate
+    const roleVerification = verifyAndNormalizeRoles(step3.data, 'Function', 'Hourly Rate');
+    console.log('[postProcessAnalysis] Role verification:', roleVerification.map(r =>
+      `${r.frictionPoint}: ${r.originalRole || 'none'} → ${r.matchedRole} ($${r.standardizedRate}/hr) [${r.confidence}]`
+    ).join('\n'));
+  }
+
+  // ============================================
   // STEP 3: FRICTION POINT PROCESSING
+  // Runs AFTER role normalization so Hourly Rate reflects the actual role rate
   // ============================================
   let totalFrictionCost = 0;
   const frictionCostMap = new Map<string, number>(); // Map friction points to costs
 
   if (step3?.data && Array.isArray(step3.data)) {
-    console.log("[postProcessAnalysis] Processing", step3.data.length, "friction points with deterministic formulas");
+    console.log("[postProcessAnalysis] Processing", step3.data.length, "friction points with deterministic formulas (using role-specific rates)");
 
     const correctedStep3Data: Step3Record[] = [];
 
@@ -803,48 +1001,11 @@ export function postProcessAnalysis(analysisResult: any): any {
         Severity: frictionResult.severity,
       });
 
-      console.log(`[postProcessAnalysis] Friction: ${record["Friction Point"]?.substring(0, 30)}... = ${formatMoney(frictionResult.value)} (${frictionResult.severity})`);
+      console.log(`[postProcessAnalysis] Friction: ${record["Friction Point"]?.substring(0, 30)}... = ${formatMoney(frictionResult.value)} (${frictionResult.severity}) [Rate: $${frictionResult.loadedHourlyRate}/hr, Role: ${record["Role"] || 'unknown'}]`);
     }
 
     step3.data = correctedStep3Data;
     console.log(`[postProcessAnalysis] Total Friction Cost: ${formatMoney(totalFrictionCost)}`);
-  }
-
-  // ============================================
-  // FUNCTION/SUB-FUNCTION NORMALIZATION (Steps 2, 3, 4)
-  // ============================================
-  const step2 = steps.find((s: any) => s.step === 2);
-
-  // Normalize Step 2 (KPIs)
-  if (step2?.data && Array.isArray(step2.data)) {
-    for (const record of step2.data) {
-      if (record["Function"]) {
-        record["Function"] = normalizeFunctionName(record["Function"]);
-      }
-      if (record["Sub-Function"]) {
-        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
-      }
-    }
-    console.log(`[postProcessAnalysis] Normalized ${step2.data.length} Step 2 Function/Sub-Function values`);
-  }
-
-  // Normalize Step 3 (Friction Points)
-  if (step3?.data && Array.isArray(step3.data)) {
-    for (const record of step3.data) {
-      if (record["Function"]) {
-        record["Function"] = normalizeFunctionName(record["Function"]);
-      }
-      if (record["Sub-Function"]) {
-        record["Sub-Function"] = normalizeSubFunction(record["Function"] || "", record["Sub-Function"]);
-      }
-    }
-    console.log(`[postProcessAnalysis] Normalized ${step3.data.length} Step 3 Function/Sub-Function values`);
-
-    // Normalize roles to standardized table
-    const roleVerification = verifyAndNormalizeRoles(step3.data, 'Function', 'Hourly Rate');
-    console.log('[postProcessAnalysis] Role verification:', roleVerification.map(r =>
-      `${r.frictionPoint}: ${r.originalRole || 'none'} → ${r.matchedRole} ($${r.standardizedRate}/hr) [${r.confidence}]`
-    ).join('\n'));
   }
 
   // Normalize Step 4 (Use Cases) - Function/Sub-Function + AI Primitives
@@ -920,6 +1081,14 @@ export function postProcessAnalysis(analysisResult: any): any {
     : Infinity;
 
   for (const record of step5.data as Step5Record[]) {
+    // Attempt structured labels first, then fall back to formula string parsing
+    // Structured labels are more reliable when available (from updated AI prompt)
+    const hasStructuredCostLabels = !!parseCostFromLabels(record["Cost Formula Labels"]);
+    const hasStructuredRevenueLabels = !!parseRevenueFromLabels(record["Revenue Formula Labels"]);
+    if (hasStructuredCostLabels || hasStructuredRevenueLabels) {
+      console.log(`[postProcessAnalysis] ${record.ID}: Using structured formula labels where available`);
+    }
+
     // CRITICAL FIX: Pass Step 3 cross-reference data to cost recalculation
     const costResult = recalculateCostBenefit(
       record["Cost Formula"] || "",
@@ -960,7 +1129,12 @@ export function postProcessAnalysis(analysisResult: any): any {
       ucTotal = perUseCaseMaxValue;
     }
 
-    const prob = record["Probability of Success"] || 0.75;
+    const prob = typeof record["Probability of Success"] === 'number'
+      ? record["Probability of Success"]
+      : parseFloat(String(record["Probability of Success"])) || 0.75;
+
+    // Expected Value = Total Annual Benefit × Probability of Success
+    const expectedValue = ucTotal * prob;
 
     totalCostBenefit += costVal;
     totalRevenueBenefit += revVal;
@@ -982,10 +1156,11 @@ export function postProcessAnalysis(analysisResult: any): any {
     });
 
     // Annotate formulas with labeled components for UI display
-    const revenueAnnotation = annotateFormula(revenueResult.formulaText, "revenue");
-    const costAnnotation = annotateFormula(costResult.formulaText, "cost");
-    const cashFlowAnnotation = annotateFormula(cashFlowResult.formulaText, "cashflow");
-    const riskAnnotation = annotateFormula(riskResult.formulaText, "risk");
+    // Prefer structured labels from AI if available, otherwise annotate from formula text
+    const revenueAnnotation = record["Revenue Formula Labels"] || annotateFormula(revenueResult.formulaText, "revenue");
+    const costAnnotation = record["Cost Formula Labels"] || annotateFormula(costResult.formulaText, "cost");
+    const cashFlowAnnotation = record["Cash Flow Formula Labels"] || annotateFormula(cashFlowResult.formulaText, "cashflow");
+    const riskAnnotation = record["Risk Formula Labels"] || annotateFormula(riskResult.formulaText, "risk");
 
     correctedStep5Data.push({
       ...record,
@@ -1002,12 +1177,14 @@ export function postProcessAnalysis(analysisResult: any): any {
       "Risk Formula": riskResult.formulaText,
       "Risk Formula Labels": riskAnnotation,
       "Total Annual Value ($)": formatMoney(ucTotal),
+      "Probability of Success": prob,
+      "Expected Value ($)": formatMoney(expectedValue),
     });
 
     // Collect per-use-case warnings for the validation report
     allUseCaseWarnings.push(...ucWarnings);
 
-    console.log(`[postProcessAnalysis] ${record.ID}: Cost=${formatMoney(costVal)}, Revenue=${formatMoney(revVal)}, CashFlow=${formatMoney(cfVal)}, Risk=${formatMoney(riskVal)}, Total=${formatMoney(ucTotal)}${ucWarnings.length > 0 ? ` [${ucWarnings.length} warnings]` : ''}`);
+    console.log(`[postProcessAnalysis] ${record.ID}: Cost=${formatMoney(costVal)}, Revenue=${formatMoney(revVal)}, CashFlow=${formatMoney(cfVal)}, Risk=${formatMoney(riskVal)}, Total=${formatMoney(ucTotal)}, P(S)=${prob}, EV=${formatMoney(expectedValue)}${ucWarnings.length > 0 ? ` [${ucWarnings.length} warnings]` : ''}`);
   }
 
   // ============================================
@@ -1104,10 +1281,10 @@ export function postProcessAnalysis(analysisResult: any): any {
     }
   }
 
-  // Recalculate Step 6 token costs using deterministic formula
-  // AND reorder columns into logical groups:
-  //   AI Execution: ID, Use Case, Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost
-  //   Implementation: Effort Score, Data Readiness, Integration Complexity, Change Mgmt, Time-to-Value
+  // Recalculate Step 6: New 4-component feasibility score (1-10) + token costs
+  // Column order: ID, Use Case, Feasibility Score, Organizational Capacity,
+  //   Data Availability & Quality, Technical Infrastructure, Governance,
+  //   Time To Value, Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost
   let totalMonthlyTokens = 0;
 
   if (step6?.data && Array.isArray(step6.data)) {
@@ -1124,24 +1301,58 @@ export function postProcessAnalysis(analysisResult: any): any {
       const tokenResult = calculateTokenCostFromStep6(record);
       totalMonthlyTokens += tokenResult.monthlyTokens;
 
-      // Build record with logically ordered columns (matches STEP_COLUMN_ORDER[6] in taxonomy.ts)
+      // Extract 4 feasibility components — support both new (1-10) and legacy (1-5) field names
+      // New fields come from updated AI prompt; legacy fields from older reports
+      const orgCapacity = record["Organizational Capacity"]
+        ?? record["Change Mgmt (1-5)"] ?? record["Change Mgmt"] ?? 5;
+      const dataQuality = record["Data Availability & Quality"]
+        ?? record["Data Readiness (1-5)"] ?? record["Data Readiness"] ?? 5;
+      const techInfra = record["Technical Infrastructure"] ?? 5;
+      const governance = record["Governance"] ?? 5;
+
+      // Scale legacy 1-5 values to 1-10 if they appear to be on old scale
+      const scaleToTen = (v: number): number => {
+        if (typeof v !== 'number' || isNaN(v)) return 5;
+        // If value is <= 5, likely on old 1-5 scale — map to 1-10
+        if (v <= 5) return Math.round(1 + ((v - 1) / 4) * 9);
+        return Math.min(10, Math.max(1, Math.round(v)));
+      };
+
+      // Only scale if the record has legacy fields (not new 1-10 fields)
+      const hasNewFields = record["Organizational Capacity"] !== undefined
+        || record["Technical Infrastructure"] !== undefined
+        || record["Governance"] !== undefined;
+
+      const oc = hasNewFields ? Math.min(10, Math.max(1, Math.round(orgCapacity as number))) : scaleToTen(orgCapacity as number);
+      const dq = hasNewFields ? Math.min(10, Math.max(1, Math.round(dataQuality as number))) : scaleToTen(dataQuality as number);
+      const ti = hasNewFields ? Math.min(10, Math.max(1, Math.round(techInfra as number))) : scaleToTen(techInfra as number);
+      const gov = hasNewFields ? Math.min(10, Math.max(1, Math.round(governance as number))) : scaleToTen(governance as number);
+
+      // Calculate composite feasibility score using weighted formula
+      const feasibilityResult = calculateFeasibilityScore({
+        organizationalCapacity: oc,
+        dataAvailabilityQuality: dq,
+        technicalInfrastructure: ti,
+        governance: gov,
+      });
+
+      const ttv = record["Time-to-Value (months)"] ?? record["Time-to-Value"] ?? 6;
+
+      // Build record with new column order
       const orderedRecord: Record<string, any> = {
-        // Group 1: Identity
         "ID": record.ID,
         "Use Case": record["Use Case"],
-        // Group 2: Implementation Readiness
-        "Data Readiness": record["Data Readiness (1-5)"] ?? record["Data Readiness"],
-        "Integration Complexity": record["Integration Complexity (1-5)"] ?? record["Integration Complexity"],
-        "Effort Score": record["Effort Score (1-5)"] ?? record["Effort Score"],
-        "Change Mgmt": record["Change Mgmt (1-5)"] ?? record["Change Mgmt"],
-        // Group 3: AI Execution
+        "Feasibility Score": feasibilityResult.value,
+        "Organizational Capacity": oc,
+        "Data Availability & Quality": dq,
+        "Technical Infrastructure": ti,
+        "Governance": gov,
+        "Time To Value": ttv,
         "Monthly Tokens": tokenResult.monthlyTokens,
         "Runs/Month": record["Runs/Month"],
         "Input Tokens/Run": record["Input Tokens/Run"],
         "Output Tokens/Run": record["Output Tokens/Run"],
         "Annual Token Cost": formatMoney(tokenResult.annualCost),
-        // Group 4: Timeline
-        "Time-to-Value": record["Time-to-Value (months)"] ?? record["Time-to-Value"],
       };
 
       // Preserve Strategic Theme if present
@@ -1150,56 +1361,77 @@ export function postProcessAnalysis(analysisResult: any): any {
       }
 
       correctedStep6Data.push(orderedRecord);
+
+      console.log(`[postProcessAnalysis] Feasibility: ${record.ID} — OC=${oc} DQ=${dq} TI=${ti} GOV=${gov} → Score=${feasibilityResult.value}`);
     }
 
     step6.data = correctedStep6Data;
   }
 
-  // Recalculate Step 7 priority scores using deterministic formula
+  // Recalculate Step 7 priority scores using new formula:
+  //   Priority = (Feasibility Score × 0.5) + (Normalized Value × 0.5)
+  //   Both on 1-10 scale, so Priority is 1-10
+  //   Value normalization: min-max across all use cases in this report
   if (step7?.data && Array.isArray(step7.data) && step6?.data) {
-    const correctedStep7Data: Step7Record[] = [];
+    // Step 1: Collect all total annual values for min-max normalization
+    const allValues: number[] = [];
+    const valueByUseCase: Record<string, number> = {};
 
     for (const record of step7.data as Step7Record[]) {
-      // Find matching Step 5 and Step 6 records
       const step5Record = correctedStep5Data.find(r => r.ID === record.ID);
-      const step6Record = (step6.data as Step6Record[]).find(r => r.ID === record.ID);
+      const totalValue = step5Record ? parseNumber(step5Record["Total Annual Value ($)"]) : 0;
+      allValues.push(totalValue);
+      valueByUseCase[record.ID] = totalValue;
+    }
 
-      if (step5Record && step6Record) {
-        const totalValue = parseNumber(step5Record["Total Annual Value ($)"]);
-        const ttv = step6Record["Time-to-Value"] ?? step6Record["Time-to-Value (months)"] ?? 6;
-        const dataReadiness = step6Record["Data Readiness"] ?? step6Record["Data Readiness (1-5)"] ?? 3;
-        const integrationComplexity = step6Record["Integration Complexity"] ?? step6Record["Integration Complexity (1-5)"] ?? 3;
-        const changeMgmt = step6Record["Change Mgmt"] ?? step6Record["Change Mgmt (1-5)"] ?? 3;
+    // Normalize all values to 1-10 scale using min-max
+    const normalizedValues = normalizeValuesToScale(allValues);
+    const normalizedByUseCase: Record<string, number> = {};
+    const step7Records = step7.data as Step7Record[];
+    step7Records.forEach((record, idx) => {
+      normalizedByUseCase[record.ID] = normalizedValues[idx];
+    });
 
-        // Use the deterministic priority score function
-        const priorityResult = calculatePriorityScore({
-          totalAnnualValue: totalValue,
-          timeToValueMonths: ttv,
-          dataReadiness,
-          integrationComplexity,
-          changeMgmt,
-        });
+    // Step 2: Build corrected Step 7 data with new priority scoring
+    const correctedStep7Data: any[] = [];
 
-        const tier = getPriorityTier(priorityResult.value);
-        const phase = getRecommendedPhase(priorityResult.value, ttv as number);
+    for (const record of step7Records) {
+      const step6Record = (step6.data as any[]).find(r => r.ID === record.ID);
+      const feasibilityScore = step6Record?.["Feasibility Score"] ?? 5;
+      const normalizedValue = normalizedByUseCase[record.ID] ?? 5.5;
+      const ttv = step6Record?.["Time To Value"] ?? step6Record?.["Time-to-Value"] ?? 6;
 
-        const step7Entry: any = {
-          ...record,
-          "Value Score (0-40)": Math.round(priorityResult.financialScore * 0.4),
-          "TTV Score (0-30)": Math.round(priorityResult.ttvScore * 0.3),
-          "Effort Score (0-30)": Math.round(priorityResult.complexityScore * 0.3),
-          "Priority Score (0-100)": priorityResult.value,
-          "Priority Tier": tier,
-          "Recommended Phase": phase,
-        };
-        // Preserve Strategic Theme if present
-        if (record["Strategic Theme"]) {
-          step7Entry["Strategic Theme"] = record["Strategic Theme"];
-        }
-        correctedStep7Data.push(step7Entry);
-      } else {
-        correctedStep7Data.push(record);
+      // New priority: (Feasibility × 0.5) + (Normalized Value × 0.5)
+      const priorityResult = calculateNewPriorityScore({
+        feasibilityScore,
+        normalizedValue,
+      });
+
+      const ttvScore = calculateTTVBubbleScore(ttv as number);
+      const tier = getNewPriorityTier(priorityResult.value, normalizedValue, feasibilityScore);
+      const phase = getNewRecommendedPhase(priorityResult.value, feasibilityScore);
+
+      // Build record with new column order:
+      // ID, Use Case, Priority Tier, Recommended Phase, Priority Score, Feasibility Score, Value Score, TTV Score
+      const step7Entry: Record<string, any> = {
+        "ID": record.ID,
+        "Use Case": record["Use Case"],
+        "Priority Tier": tier,
+        "Recommended Phase": phase,
+        "Priority Score": priorityResult.value,
+        "Feasibility Score": feasibilityScore,
+        "Value Score": normalizedValue,
+        "TTV Score": Math.round(ttvScore * 100) / 100,
+      };
+
+      // Preserve Strategic Theme if present
+      if (record["Strategic Theme"]) {
+        step7Entry["Strategic Theme"] = record["Strategic Theme"];
       }
+
+      correctedStep7Data.push(step7Entry);
+
+      console.log(`[postProcessAnalysis] Priority: ${record.ID} — Feasibility=${feasibilityScore} Value=${normalizedValue} → Priority=${priorityResult.value} → ${tier} (${phase})`);
     }
 
     step7.data = correctedStep7Data;
@@ -1235,9 +1467,9 @@ export function postProcessAnalysis(analysisResult: any): any {
     totalMonthlyTokens,
   });
 
-  // Get top 10 use cases by priority score
+  // Get top 10 use cases by priority score (new 1-10 scale)
   const sortedUseCases = [...(step7?.data || [])].sort(
-    (a: any, b: any) => (b["Priority Score (0-100)"] || 0) - (a["Priority Score (0-100)"] || 0)
+    (a: any, b: any) => (b["Priority Score"] || b["Priority Score (0-100)"] || 0) - (a["Priority Score"] || a["Priority Score (0-100)"] || 0)
   );
 
   const topUseCases = sortedUseCases.slice(0, 10).map((uc: any, index: number) => {
@@ -1245,8 +1477,8 @@ export function postProcessAnalysis(analysisResult: any): any {
     return {
       rank: index + 1,
       useCase: uc["Use Case"],
-      priorityScore: uc["Priority Score (0-100)"] || 0,
-      monthlyTokens: (step6?.data as Step6Record[])?.find(r => r.ID === uc.ID)?.["Monthly Tokens"] || 0,
+      priorityScore: uc["Priority Score"] || uc["Priority Score (0-100)"] || 0,
+      monthlyTokens: (step6?.data as any[])?.find(r => r.ID === uc.ID)?.["Monthly Tokens"] || 0,
       annualValue: parseNumber(step5Record?.["Total Annual Value ($)"]),
     };
   });

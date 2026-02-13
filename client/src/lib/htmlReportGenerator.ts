@@ -889,13 +889,35 @@ export function generateProfessionalHTMLReport(
 
         <div class="appendix-block">
           <h3 class="subsection-heading">Methodology & Assumptions</h3>
+
+          <p style="margin-bottom: 12px;"><strong>Probability of Success (0.50&ndash;0.95):</strong> Confidence that the use case will deliver projected value at production scale. Derived from maturity of underlying AI technology, availability of training data, organizational readiness, and market precedent. A conversation AI returning 0.85 reflects proven technology; a novel predictive model at 0.60 reflects emerging capability.</p>
+
+          <p style="margin-bottom: 12px;"><strong>Realization Factor (0.80&ndash;0.95):</strong> The fraction of theoretical benefit that survives contact with operational reality. Accounts for adoption lag, process friction, and measurement imprecision. Revenue benefits carry 0.95 (most measurable). Risk benefits carry 0.80 (most uncertain, actuarial nature).</p>
+
+          <p style="margin-bottom: 12px;"><strong>Adoption Rate (0.75&ndash;0.95):</strong> The percentage of eligible users and processes that will adopt the AI solution within the measurement period. Reflects change management readiness, training investment, and cultural fit.</p>
+
+          <p style="margin-bottom: 12px;"><strong>Data Maturity (0.60&ndash;1.00):</strong> Organizational data quality and accessibility scaled from Level 1 (ad-hoc, 0.60) to Level 5 (optimizing, 1.00). Most organizations assess at Level 2 (0.75). Derived from data governance maturity, system integration level, and data quality metrics.</p>
+
+          <p style="margin-bottom: 12px;"><strong>Value Normalization (1&ndash;10):</strong> Min-max normalization across all use cases: Score = 1 + ((Value &minus; Min) / (Max &minus; Min)) &times; 9. Ensures relative comparison is deterministic and scales dynamically with report data.</p>
+
+          <p style="margin-bottom: 12px;"><strong>Feasibility Score (1&ndash;10):</strong> Weighted composite of four components: Organizational Capacity (30%), Data Availability &amp; Quality (30%), Technical Infrastructure (20%), and AI-Specific Governance (20%). Each component scored 1&ndash;10 based on organizational assessment.</p>
+
+          <p style="margin-bottom: 12px;"><strong>Priority Score (1&ndash;10):</strong> Equal-weighted average of Feasibility Score and Normalized Value Score: (Feasibility &times; 0.5) + (Value &times; 0.5). Determines tier placement: Champions (&ge;7.5), Quick Wins, Strategic, or Foundation.</p>
+
+          <h4 style="margin: 16px 0 8px; font-size: 14px;">Standard Benefit Formulas</h4>
           <ul class="assumption-list">
-            <li><strong>Data Maturity:</strong> Current state assessed at Level 2 based on enterprise system investments with limited AI deployment</li>
-            <li><strong>Adoption Ramps:</strong> Conservative 90% adoption in Year 1; assumes 10% resistance or pilot scope limitations</li>
-            <li><strong>Revenue Assumptions:</strong> Market-tested uplift percentages applied to relevant revenue pools with 0.95 realization factors for execution risk</li>
+            <li><strong>Cost Benefit:</strong> Hours Saved &times; Loaded Hourly Rate &times; Benefits Loading (1.35&times;) &times; Adoption Rate &times; Data Maturity</li>
+            <li><strong>Revenue Benefit:</strong> Revenue Uplift % &times; Revenue at Risk &times; Realization Factor &times; Data Maturity</li>
+            <li><strong>Cash Flow Benefit:</strong> Annual Revenue &times; (Days Improved / 365) &times; Cost of Capital &times; Realization Factor</li>
+            <li><strong>Risk Benefit:</strong> Risk Reduction % &times; Risk Exposure &times; Realization Factor &times; Data Maturity</li>
+            <li><strong>Expected Value:</strong> Total Annual Benefit &times; Probability of Success</li>
+          </ul>
+
+          <h4 style="margin: 16px 0 8px; font-size: 14px;">Additional Assumptions</h4>
+          <ul class="assumption-list">
             <li><strong>Cost of Capital:</strong> 8% applied to working capital improvements per company WACC proxy</li>
             <li><strong>Token Modeling:</strong> Based on Claude API pricing ($3/1M input, $15/1M output); actual costs scale with usage patterns</li>
-            <li><strong>Probability Weighting:</strong> Success rates reflect technology maturity, data availability, and organizational change readiness</li>
+            <li><strong>TTV Bubble Sizing:</strong> Score = 1 &minus; MIN(TTV/12, 1). Shorter time-to-value produces larger bubbles on the matrix chart.</li>
           </ul>
         </div>
 

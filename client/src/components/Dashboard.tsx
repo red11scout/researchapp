@@ -8,6 +8,7 @@ import {
 import { format } from '@/lib/formatters';
 import { QuadrantBubbleChart } from '@/components/dashboard/quadrant-bubble-chart';
 import { MatrixScorecard } from '@/components/dashboard/matrix-scorecard';
+import { MethodologySection } from '@/components/dashboard/methodology-section';
 
 // Sanitize text to remove markdown artifacts for professional prose display
 function sanitizeForProse(text: string): string {
@@ -86,19 +87,26 @@ interface ValueInsight {
 
 interface MatrixDataPoint {
   name: string;
-  x: number;  // Implementation Readiness (0-100)
-  y: number;  // Business Value (0-100)
-  z: number;  // Effort Score (1-5)
-  type: string;  // Quadrant label
+  x: number;  // Feasibility Score (1-10)
+  y: number;  // Normalized Annual Value (1-10)
+  z: number;  // TTV bubble score (0-1, higher = faster payback)
+  type: string;  // Quadrant label: Champion, Strategic, Quick Win, Foundation
   color: string;
-  // Enriched fields for consulting-grade bubble chart (all optional for backward compat)
-  timeToValue?: number;       // months — bubble size via d3.scaleSqrt
-  priorityTier?: string;      // Critical/High/Medium/Low — bubble color
-  priorityScore?: number;     // 0-100 — tooltip detail
+  // Enriched fields for consulting-grade bubble chart
+  timeToValue?: number;       // months — used to derive TTV bubble score
+  priorityTier?: string;      // Tier label — bubble color
+  priorityScore?: number;     // 1-10 — tooltip detail
   annualValue?: number;       // raw $ amount — tooltip detail
-  dataReadiness?: number;     // 1-5 sub-score
-  integrationComplexity?: number; // 1-5 sub-score
-  changeMgmt?: number;        // 1-5 sub-score
+  feasibilityScore?: number;  // 1-10 composite
+  normalizedValue?: number;   // 1-10 min-max normalized
+  organizationalCapacity?: number;    // 1-10 component
+  dataAvailabilityQuality?: number;   // 1-10 component
+  technicalInfrastructure?: number;   // 1-10 component
+  governance?: number;                // 1-10 component
+  // Legacy fields for backward compat
+  dataReadiness?: number;
+  integrationComplexity?: number;
+  changeMgmt?: number;
   monthlyTokens?: number;
   description?: string;
 }
@@ -525,12 +533,12 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
             <h3 className="text-lg font-bold text-white leading-tight">{point.name}</h3>
             {point.priorityTier && (
               <span className={`inline-block mt-2 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                point.priorityTier === 'Critical' ? 'bg-slate-800 text-white border border-slate-600' :
-                point.priorityTier === 'High' ? 'bg-blue-700/80 text-white' :
-                point.priorityTier === 'Medium' ? 'bg-blue-500/60 text-white' :
+                point.priorityTier.includes('Champion') ? 'bg-emerald-700/80 text-white' :
+                point.priorityTier.includes('Quick Win') ? 'bg-teal-600/80 text-white' :
+                point.priorityTier.includes('Strategic') ? 'bg-blue-700/80 text-white' :
                 'bg-slate-500/50 text-white'
               }`}>
-                {point.priorityTier} Priority
+                {point.priorityTier}
               </span>
             )}
           </div>
@@ -546,9 +554,9 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
         <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
           <p className="text-sm font-semibold text-slate-300 mb-1">Quadrant: {point.type}</p>
           <p className="text-xs text-slate-500">
-            {point.type === 'Champion' && 'High value with high readiness. Execute immediately.'}
-            {point.type === 'Strategic Bet' && 'High value but requires planning. Worth the investment.'}
-            {point.type === 'Quick Win' && 'Lower value but easy to implement. Quick time-to-value.'}
+            {point.type === 'Champion' && 'High value and high feasibility. Execute immediately.'}
+            {point.type === 'Strategic' && 'High value but lower feasibility. Worth the investment with planning.'}
+            {point.type === 'Quick Win' && 'Lower value but highly feasible. Fast time-to-value.'}
             {point.type === 'Foundation' && 'Building blocks for future AI maturity. Invest strategically.'}
           </p>
         </div>
@@ -564,20 +572,20 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
         {/* Score bars */}
         <div className="mb-6">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Scoring Breakdown</p>
-          {scoreBar('Business Value', point.y, 100, '#059669')}
-          {scoreBar('Readiness', point.x, 100, '#0339AF')}
-          {point.priorityScore != null && point.priorityScore > 0 && scoreBar('Priority Score', point.priorityScore, 100, '#4C73E9')}
-          {scoreBar('Effort', point.z, 5, '#D97706')}
-          {point.timeToValue && scoreBar('Time to Value', point.timeToValue, 24, '#0D9488')}
+          {scoreBar('Normalized Value', Math.round(point.y * 10) / 10, 10, '#059669')}
+          {scoreBar('Feasibility', Math.round(point.x * 10) / 10, 10, '#0339AF')}
+          {point.priorityScore != null && point.priorityScore > 0 && scoreBar('Priority Score', Math.round(point.priorityScore * 10) / 10, 10, '#4C73E9')}
+          {point.timeToValue != null && scoreBar('Time to Value', point.timeToValue, 24, '#0D9488')}
         </div>
 
-        {/* Sub-scores */}
-        {(point.dataReadiness || point.integrationComplexity || point.changeMgmt) && (
+        {/* Feasibility Components */}
+        {(point.organizationalCapacity || point.dataAvailabilityQuality || point.technicalInfrastructure || point.governance) && (
           <div className="mb-6">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Implementation Sub-Scores</p>
-            {point.dataReadiness && scoreBar('Data Readiness', point.dataReadiness, 5, '#38BDF8')}
-            {point.integrationComplexity && scoreBar('Integration Complexity', point.integrationComplexity, 5, '#F59E0B')}
-            {point.changeMgmt && scoreBar('Change Management', point.changeMgmt, 5, '#A78BFA')}
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Feasibility Components</p>
+            {point.organizationalCapacity != null && scoreBar('Organizational Capacity', point.organizationalCapacity, 10, '#38BDF8')}
+            {point.dataAvailabilityQuality != null && scoreBar('Data Availability & Quality', point.dataAvailabilityQuality, 10, '#F59E0B')}
+            {point.technicalInfrastructure != null && scoreBar('Technical Infrastructure', point.technicalInfrastructure, 10, '#A78BFA')}
+            {point.governance != null && scoreBar('Governance', point.governance, 10, '#10B981')}
           </div>
         )}
 
@@ -1057,6 +1065,7 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
       <PriorityMatrix data={data.priorityMatrix} />
       <UseCaseCarousel data={data.useCases} clientName={data.clientName} />
       {data.frictionByTheme && <FrictionPoints data={data.frictionByTheme} />}
+      <MethodologySection />
       <CTASection
         totalValue={data.hero.totalValue}
         valueSuffix={data.hero.valueSuffix}

@@ -261,6 +261,12 @@ TONE REQUIREMENTS:
 - Polite without being obsequious
 - Executive-appropriate at all times
 
+ANALYTICAL RIGOR:
+Inform your analysis with the rigor of MIT/Stanford AI researchers, the strategic lens of BCG/Bain/McKinsey consultants, and the technical depth of Anthropic/DeepMind/Meta scientists.
+
+INTELLIGENT CHOICE ARCHITECTURE:
+Layout information to tell a story that guides decision-making. Every number must earn its place. Every sentence must move the narrative forward. Design tables, charts, and summaries so the reader's eye travels naturally from insight to action.
+
 CORE PRINCIPLES:
 1. RESHAPE, DON'T ACCELERATE: Every use case must fundamentally change HOW work is performed. A 10x improvement in a bad process is still a bad process.
 2. HUMAN-AI COLLABORATION: Design for human judgment at critical decision points. AI handles volume and pattern recognition; humans handle exceptions and accountability.
@@ -525,38 +531,57 @@ Generate EXACTLY 10 use cases that:
 Table columns: ID, Use Case Name, Description, Target Friction, AI Primitives, Human-in-the-Loop Checkpoint, Function, Sub-Function, Strategic Theme
 
 STEP 5: BENEFITS QUANTIFICATION BY DRIVER
-- Calculate across all 4 drivers with EXPLICIT FORMULAS showing × symbols
-- Apply ALL conservative reductions (Revenue ×0.95, Cost ×0.90, Cash Flow ×0.85, Risk ×0.80)
-- Apply data maturity adjustment (×0.75 default)
-- Round DOWN to nearest $100K
-- Each use case must include a "Strategic Theme" column linking to Step 1
-Table columns: ID, Use Case, Revenue Benefit ($), Revenue Formula, Cost Benefit ($), Cost Formula, Cash Flow Benefit ($), Cash Flow Formula, Risk Benefit ($), Risk Formula, Total Annual Value ($), Probability of Success (0-1), Strategic Theme
+ALL 4 benefit types MUST use these EXACT standardized variable structures:
+- Cost: Hours Saved × Loaded Hourly Rate × Benefits Loading (1.35) × Adoption Rate × Data Maturity
+- Revenue: Revenue Uplift % × Revenue at Risk × Realization Factor × Data Maturity
+- Cash Flow: Annual Revenue × (Days Improved / 365) × Cost of Capital × Realization Factor
+- Risk: Risk Reduction % × Risk Exposure × Realization Factor × Data Maturity
 
-CRITICAL - Each formula MUST show the calculation with × symbols:
+IMPORTANT:
+- Cost formulas MUST use the role-specific Loaded Hourly Rate from Step 3 (NOT a flat $150/hr)
+- Apply conservative reductions: Revenue Realization ×0.95, Cost Adoption ×0.90, Cash Flow Realization ×0.85, Risk Realization ×0.80
+- Data Maturity default: ×0.75 (Level 2)
+- Round DOWN to nearest $100K
+- Include "Probability of Success" (0.50-0.95) for each use case
+- Total Annual Value = Cost + Revenue + Cash Flow + Risk (before probability weighting)
+- Each use case must include a "Strategic Theme" column linking to Step 1
+
+ALSO provide structured formula labels for each formula type as JSON arrays:
+- "Cost Formula Labels": {"components": [{"label": "Hours Saved", "value": 28000}, {"label": "Loaded Hourly Rate", "value": 150}, {"label": "Benefits Loading", "value": 1.35}, {"label": "Adoption Rate", "value": 0.90}, {"label": "Data Maturity", "value": 0.75}]}
+- "Revenue Formula Labels": {"components": [{"label": "Revenue Uplift %", "value": 0.15}, {"label": "Revenue at Risk", "value": 190000000}, {"label": "Realization Factor", "value": 0.95}, {"label": "Data Maturity", "value": 0.75}]}
+- "Cash Flow Formula Labels": {"components": [{"label": "Annual Revenue", "value": 500000000}, {"label": "Days Improved", "value": 12}, {"label": "Cost of Capital", "value": 0.08}, {"label": "Realization Factor", "value": 0.85}]}
+- "Risk Formula Labels": {"components": [{"label": "Risk Reduction %", "value": 0.15}, {"label": "Risk Exposure", "value": 6000000}, {"label": "Realization Factor", "value": 0.80}, {"label": "Data Maturity", "value": 0.75}]}
+
+Table columns: ID, Use Case, Revenue Benefit ($), Revenue Formula, Revenue Formula Labels, Cost Benefit ($), Cost Formula, Cost Formula Labels, Cash Flow Benefit ($), Cash Flow Formula, Cash Flow Formula Labels, Risk Benefit ($), Risk Formula, Risk Formula Labels, Total Annual Value ($), Probability of Success (0-1), Strategic Theme
+
+CRITICAL - Each formula string MUST show the calculation with × symbols:
 - "Revenue Formula": Example: "15% lift × $190M pipeline × 0.95 × 0.75 = $20.3M"
-- "Cost Formula": Example: "28,000 hours × $150/hr × 1.35 × 0.90 × 0.75 = $3.8M"
-- "Cash Flow Formula": Example: "$500M revenue × (12 / 365) × 0.08 × 0.85 × 0.75 = $200K"
+- "Cost Formula": Example: "28,000 hours × $50/hr × 1.35 × 0.90 × 0.75 = $1.2M"
+- "Cash Flow Formula": Example: "$500M revenue × (12 / 365) × 0.08 × 0.85 = $200K"
 - "Risk Formula": Example: "15% reduction × $6M exposure × 0.80 × 0.75 = $540K"
 NOTE: Do NOT repeat the result after an arrow (→). Show only: "formula = $result". Not "formula = $result → $result".
 
-STEP 6: EFFORT & TOKEN MODELING
-- Score 1-5: Data Readiness, Integration Complexity, Change Management
+STEP 6: FEASIBILITY & TOKEN MODELING
+Score each use case on FOUR feasibility components (1-10 scale each):
+1. Organizational Capacity (weight: 30%) — Leadership AI champions, AI/ML talent, change-ready culture, prior successful tech transformations. 8-10: Active AI hiring, leadership champions. 5-7: Some talent, moderate change capability. 1-4: No AI roles, leadership skepticism.
+2. Data Availability & Quality (weight: 30%) — Modern ERP/CRM, integrated clean data, data governance. 8-10: Modern systems, integrated clean data, governance established. 5-7: Partial integration, mixed quality. 1-4: Legacy silos, quality issues.
+3. Technical Infrastructure (weight: 20%) — Cloud/API readiness, biased toward on-premises reality. 8-10: Cloud-native, API-first, DevOps. 5-7: Partial cloud, some APIs. 1-4: On-premises legacy, no APIs.
+4. Governance (weight: 20%) — AI-Specific Governance: ethics board, responsible AI framework, model monitoring, bias auditing, risk assessment. 8-10: Established AI ethics board and framework. 5-7: Emerging guidelines, partial documentation. 1-4: No AI governance framework.
 - Estimate monthly runs and token consumption
 - Round UP time-to-value estimates
 - Flag prerequisite work NOT in timeline
 - Each use case must include a "Strategic Theme" column linking to Step 1
 - REQUIRED FIELD: Time-to-Value (months) is MANDATORY for every use case. Cannot be empty or null.
-Table columns: ID, Use Case, Data Readiness (1-5), Integration Complexity (1-5), Effort Score (1-5), Change Mgmt (1-5), Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost ($), Time-to-Value (months) [REQUIRED], Strategic Theme
+Table columns: ID, Use Case, Organizational Capacity, Data Availability & Quality, Technical Infrastructure, Governance, Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost ($), Time-to-Value (months) [REQUIRED], Strategic Theme
 (Use $3 per 1M input tokens, $15 per 1M output tokens for Claude pricing)
+NOTE: The postprocessor computes: Feasibility Score = (OrgCapacity × 0.30) + (DataQuality × 0.30) + (TechInfra × 0.20) + (Governance × 0.20). Do NOT compute this yourself.
 
 STEP 7: PRIORITY SCORING & ROADMAP
-Formula: Priority = (Value_Score × 0.40) + (TTV_Score × 0.30) + (Effort_Score × 0.30)
-- Value Score: 0-40 based on total annual value
-- TTV Score: Inverse (6 mo = 30pts, 18 mo = 5pts)
-- Effort Score: Inverse (Effort 1 = 30pts, Effort 5 = 6pts)
-Tiers: Critical (>75), High (60-74), Medium (45-59)
+The postprocessor computes all priority scores deterministically. Generate placeholder values that will be overwritten:
+- Priority Score: (Feasibility × 0.5) + (Normalized Value × 0.5), both on 1-10 scale
+- Tiers: Champions (≥7.5), Quick Wins (value<5.5 & feasibility≥5.5), Strategic (value≥5.5 & feasibility<5.5), Foundation (<5.0)
 - Each use case must include a "Strategic Theme" column linking to Step 1
-Table columns: ID, Use Case, Value Score (0-40), TTV Score (0-30), Effort Score (0-30), Priority Score (0-100), Priority Tier (Critical/High/Medium), Recommended Phase (Q1/Q2/Q3/Q4), Strategic Theme
+Table columns: ID, Use Case, Priority Tier, Recommended Phase (Q1/Q2/Q3/Q4), Priority Score, Feasibility Score, Value Score, TTV Score, Strategic Theme
 </output_methodology>
 
 <quality_gates>
@@ -632,8 +657,8 @@ JSON structure:
     {"step": 3, "title": "Friction Point Mapping", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "Friction Point": "...", "Severity": "Critical/High/Medium", "Primary Driver Impact": "...", "Estimated Annual Cost ($)": "..."}]},
     {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "..."}]},
     {"step": 5, "title": "Benefits Quantification by Driver", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Revenue Benefit ($)": "...", "Revenue Formula": "...", "Cost Benefit ($)": "...", "Cost Formula": "...", "Cash Flow Benefit ($)": "...", "Cash Flow Formula": "...", "Risk Benefit ($)": "...", "Risk Formula": "...", "Total Annual Value ($)": "...", "Probability of Success": 0.75}]},
-    {"step": 6, "title": "Effort & Token Modeling", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Data Readiness (1-5)": 3, "Integration Complexity (1-5)": 3, "Change Mgmt (1-5)": 3, "Effort Score (1-5)": 3, "Time-to-Value (months)": 6, "Input Tokens/Run": 800, "Output Tokens/Run": 800, "Runs/Month": 1000, "Monthly Tokens": 1600000, "Annual Token Cost ($)": "$..."}]},
-    {"step": 7, "title": "Priority Scoring & Roadmap", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Value Score (0-40)": 35, "TTV Score (0-30)": 25, "Effort Score (0-30)": 24, "Priority Score (0-100)": 84, "Priority Tier": "Critical", "Recommended Phase": "Q1"}]}
+    {"step": 6, "title": "Feasibility & Token Modeling", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Organizational Capacity": 7, "Data Availability & Quality": 6, "Technical Infrastructure": 5, "Governance": 4, "Time-to-Value (months)": 6, "Input Tokens/Run": 800, "Output Tokens/Run": 800, "Runs/Month": 1000, "Monthly Tokens": 1600000, "Annual Token Cost ($)": "$..."}]},
+    {"step": 7, "title": "Priority Scoring & Roadmap", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Priority Tier": "Champions", "Recommended Phase": "Q1", "Priority Score": 7.8, "Feasibility Score": 5.5, "Value Score": 10.0, "TTV Score": 0.5}]}
   ],
   "summary": "Plain text fallback summary (250-350 words). First sentence states the recommendation with total value. Use the executiveSummary object for the primary structured output.",
   "executiveSummary": {
@@ -875,8 +900,8 @@ export async function generateWhatIfSuggestion(
     3: "Friction Point Mapping - Generate friction point records with Function, Sub-Function, Friction Point description, Severity, Estimated Annual Cost, and Primary Driver Impact",
     4: "AI Use Case Generation - Generate AI use case records with ID, Function, Sub-Function, Use Case Name, Description, AI Primitives, and Target Friction",
     5: "Benefits Quantification - Generate benefit records with ID, Use Case, Revenue Benefit (e.g. $2.5M), Revenue Formula (explanation of calculation), Cost Benefit, Cost Formula, Cash Flow Benefit, Cash Flow Formula, Risk Benefit, Risk Formula, Total Annual Value (sum of all benefits), and Probability of Success (percentage 1-100). Use realistic conservative estimates with $K or $M notation.",
-    6: "Effort & Token Modeling - Generate effort records with ID, Use Case name, Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost, Data Readiness (1-5), Integration Complexity (1-5), Change Mgmt (1-5), Effort Score, and Time-to-Value (months)",
-    7: "Priority Scoring & Roadmap - Generate priority records with ID, Use Case, Value Score, TTV Score, Effort Score, Priority Score, Priority Tier, and Recommended Phase"
+    6: "Feasibility & Token Modeling - Generate feasibility records with ID, Use Case, Organizational Capacity (1-10), Data Availability & Quality (1-10), Technical Infrastructure (1-10), Governance (1-10), Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost, and Time-to-Value (months)",
+    7: "Priority Scoring & Roadmap - Generate priority records with ID, Use Case, Priority Tier (Champions/Quick Wins/Strategic/Foundation), Recommended Phase, Priority Score, Feasibility Score, Value Score, TTV Score"
   };
 
   const systemPrompt = `You are an AI assistant helping users create What-If scenarios for enterprise AI assessments. 
