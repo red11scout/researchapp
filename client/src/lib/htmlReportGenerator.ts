@@ -144,9 +144,10 @@ export function generateProfessionalHTMLReport(
       { id: 'friction-mapping', title: 'Friction Point Mapping', num: '07' },
       { id: 'use-cases', title: 'AI Use Case Generation', num: '08' },
       { id: 'benefits', title: 'Benefits Quantification', num: '09' },
-      { id: 'effort-tokens', title: 'Effort & Token Modeling', num: '10' },
-      { id: 'priority-roadmap', title: 'Priority Scoring & Roadmap', num: '11' },
-      { id: 'appendix', title: 'Appendix', num: '12' },
+      { id: 'effort-tokens', title: 'Feasibility & Token Modeling', num: '10' },
+      { id: 'value-matrix', title: 'Value-Feasibility Matrix', num: '11' },
+      { id: 'priority-roadmap', title: 'Priority Scoring & Roadmap', num: '12' },
+      { id: 'appendix', title: 'Appendix', num: '13' },
     ];
 
     return `
@@ -743,18 +744,19 @@ export function generateProfessionalHTMLReport(
 
     return `
       <div class="section" id="effort-tokens">
-        <h2 class="section-heading">Effort & Token Modeling</h2>
+        <h2 class="section-heading">Feasibility & Token Modeling</h2>
         <div class="table-wrap scrollable">
           <table class="data-table compact">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Use Case Name</th>
+                <th>Use Case</th>
+                <th class="text-center">Feasibility</th>
+                <th class="text-center">Org Capacity</th>
+                <th class="text-center">Data Quality</th>
+                <th class="text-center">Tech Infra</th>
+                <th class="text-center">Governance</th>
                 <th class="text-center">TTV (mo)</th>
-                <th class="text-center">Data Ready</th>
-                <th class="text-center">Integration</th>
-                <th class="text-center">Effort</th>
-                <th class="text-center">Change Mgmt</th>
                 <th class="text-right">Monthly Tokens</th>
                 <th class="text-right">Runs/Mo</th>
                 <th class="text-right">Input/Run</th>
@@ -769,11 +771,12 @@ export function generateProfessionalHTMLReport(
               <tr>
                 <td class="font-semibold">${escapeHtml(row['ID'] || '')}</td>
                 <td class="font-medium">${escapeHtml(row['Use Case'] || row['Use Case Name'] || '')}</td>
-                <td class="text-center">${row['Time-to-Value'] || '–'}</td>
-                <td class="text-center"><span class="score-circle">${row['Data Readiness'] || '–'}</span></td>
-                <td class="text-center"><span class="score-circle">${row['Integration Complexity'] || '–'}</span></td>
-                <td class="text-center"><span class="score-circle">${row['Effort Score'] || '–'}</span></td>
-                <td class="text-center"><span class="score-circle">${row['Change Mgmt'] || '–'}</span></td>
+                <td class="text-center"><span class="score-pill">${row['Feasibility Score'] || row['Effort Score'] || '–'}</span></td>
+                <td class="text-center"><span class="score-circle">${row['Organizational Capacity'] || row['Change Mgmt'] || '–'}</span></td>
+                <td class="text-center"><span class="score-circle">${row['Data Availability & Quality'] || row['Data Readiness'] || '–'}</span></td>
+                <td class="text-center"><span class="score-circle">${row['Technical Infrastructure'] || row['Integration Complexity'] || '–'}</span></td>
+                <td class="text-center"><span class="score-circle">${row['Governance'] || '–'}</span></td>
+                <td class="text-center">${row['Time To Value'] || row['Time-to-Value'] || '–'}</td>
                 <td class="text-right">${formatNumber(row['Monthly Tokens'] || 0)}</td>
                 <td class="text-right">${formatNumber(row['Runs/Month'] || 0)}</td>
                 <td class="text-right">${formatNumber(row['Input Tokens/Run'] || 0)}</td>
@@ -787,7 +790,7 @@ export function generateProfessionalHTMLReport(
           </table>
         </div>
         <p class="table-footnote">
-          Scoring Scale: Data Readiness, Integration Complexity, Effort Score, Change Mgmt (1=Low to 5=High) |
+          Scoring Scale: All components scored 1&ndash;10 (weighted: Org Capacity 30%, Data Quality 30%, Tech Infra 20%, Governance 20%) |
           TTV = Time-to-Value in months | Token costs at $3/1M input, $15/1M output
         </p>
       </div>
@@ -811,11 +814,11 @@ export function generateProfessionalHTMLReport(
                 <th>ID</th>
                 <th>Use Case</th>
                 <th>Priority Tier</th>
-                <th class="text-center">Score (0-100)</th>
-                <th class="text-center">Value (0-40)</th>
-                <th class="text-center">TTV (0-30)</th>
-                <th class="text-center">Effort (0-30)</th>
                 <th>Recommended Phase</th>
+                <th class="text-center">Priority Score</th>
+                <th class="text-center">Feasibility Score</th>
+                <th class="text-center">Value Score</th>
+                <th class="text-center">TTV Score</th>
                 <th>Strategic Theme</th>
               </tr>
             </thead>
@@ -827,16 +830,165 @@ export function generateProfessionalHTMLReport(
                 <td class="font-semibold">${escapeHtml(row['ID'] || '')}</td>
                 <td class="font-medium">${escapeHtml(row['Use Case'] || '')}</td>
                 <td>${escapeHtml(row['Priority Tier'] || '')}</td>
-                <td class="text-center"><span class="score-pill">${row['Priority Score (0-100)'] || 0}</span></td>
-                <td class="text-center">${row['Value Score (0-40)'] || 0}</td>
-                <td class="text-center">${row['TTV Score (0-30)'] || 0}</td>
-                <td class="text-center">${row['Effort Score (0-30)'] || 0}</td>
                 <td><span class="tag tag-sky">${escapeHtml(row['Recommended Phase'] || '')}</span></td>
+                <td class="text-center"><span class="score-pill">${row['Priority Score'] || row['Priority Score (0-100)'] || 0}</span></td>
+                <td class="text-center">${row['Feasibility Score'] || '–'}</td>
+                <td class="text-center">${row['Value Score'] || row['Value Score (0-40)'] || 0}</td>
+                <td class="text-center">${row['TTV Score'] || row['TTV Score (0-30)'] || 0}</td>
                 <td>${escapeHtml(row['Strategic Theme'] || '')}</td>
               </tr>
             `
                 )
                 .join('')}
+            </tbody>
+          </table>
+        </div>
+        <p class="table-footnote">
+          Priority Score = (Feasibility &times; 0.5) + (Normalized Value &times; 0.5) on 1&ndash;10 scale |
+          Tiers: Champions (&ge;7), Quick Wins, Strategic, Foundation
+        </p>
+      </div>
+    `;
+  };
+
+  // Generate static 2x2 Value-Feasibility Matrix (SVG for print/HTML report)
+  const generateMatrixVisualization = (): string => {
+    const step7 = getStepData(7);
+    const step6 = getStepData(6);
+    const data = (step7.data as any[]) || [];
+
+    if (!data || data.length === 0) return '';
+
+    // Chart dimensions
+    const W = 600, H = 450;
+    const M = { top: 40, right: 30, bottom: 60, left: 60 };
+    const plotW = W - M.left - M.right;
+    const plotH = H - M.top - M.bottom;
+
+    // Scale functions (1-10 domain)
+    const scaleX = (v: number) => M.left + ((v - 1) / 9) * plotW;
+    const scaleY = (v: number) => M.top + plotH - ((v - 1) / 9) * plotH;
+    const midX = scaleX(5.5);
+    const midY = scaleY(5.5);
+
+    // Quadrant colors
+    const qColors: Record<string, string> = {
+      champion: '#059669', strategic: '#0339AF', quickwin: '#0D9488', foundation: '#94A3B8',
+    };
+
+    // Build bubble data
+    const bubbles = data.map((row: any) => {
+      const feasibility = row['Feasibility Score'] || 5;
+      const value = row['Value Score'] || 5;
+      const step6Record = (step6.data as any[])?.find((r: any) => r.ID === row.ID);
+      const ttv = step6Record?.['Time To Value'] || row['Time To Value'] || 6;
+      const ttvScore = Math.max(0, 1 - Math.min(ttv / 12, 1));
+      const r = Math.max(6, 6 + ttvScore * 14); // radius 6-20
+
+      let quadrant = 'foundation';
+      if (value >= 5.5 && feasibility >= 5.5) quadrant = 'champion';
+      else if (value >= 5.5 && feasibility < 5.5) quadrant = 'strategic';
+      else if (value < 5.5 && feasibility >= 5.5) quadrant = 'quickwin';
+
+      return {
+        id: row['ID'] || '',
+        name: row['Use Case'] || '',
+        x: scaleX(feasibility),
+        y: scaleY(value),
+        r,
+        color: qColors[quadrant],
+        quadrant,
+        feasibility,
+        value,
+        tier: row['Priority Tier'] || '',
+      };
+    });
+
+    // Generate axis ticks
+    const xTicks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const yTicks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+    return `
+      <div class="section" id="value-matrix">
+        <h2 class="section-heading">Value-Feasibility Matrix</h2>
+        <p class="section-intro">Use cases plotted by Normalized Annual Value (vertical) vs. Feasibility Score (horizontal). Bubble size reflects Time-to-Value (larger = faster payback). Quadrant threshold at 5.5 on both axes.</p>
+
+        <div style="text-align: center; margin: 24px 0;">
+          <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="max-width: 600px; width: 100%; height: auto; font-family: 'Inter', sans-serif;">
+
+            <!-- Quadrant backgrounds -->
+            <rect x="${M.left}" y="${M.top}" width="${midX - M.left}" height="${midY - M.top}" fill="${qColors.strategic}" opacity="0.06" />
+            <rect x="${midX}" y="${M.top}" width="${M.left + plotW - midX}" height="${midY - M.top}" fill="${qColors.champion}" opacity="0.06" />
+            <rect x="${M.left}" y="${midY}" width="${midX - M.left}" height="${M.top + plotH - midY}" fill="${qColors.foundation}" opacity="0.04" />
+            <rect x="${midX}" y="${midY}" width="${M.left + plotW - midX}" height="${M.top + plotH - midY}" fill="${qColors.quickwin}" opacity="0.06" />
+
+            <!-- Quadrant dividers -->
+            <line x1="${midX}" y1="${M.top}" x2="${midX}" y2="${M.top + plotH}" stroke="${colors.neutral300}" stroke-width="1" stroke-dasharray="6,4" />
+            <line x1="${M.left}" y1="${midY}" x2="${M.left + plotW}" y2="${midY}" stroke="${colors.neutral300}" stroke-width="1" stroke-dasharray="6,4" />
+
+            <!-- Quadrant labels -->
+            <text x="${(M.left + midX) / 2}" y="${M.top + 16}" text-anchor="middle" font-size="10" fill="${qColors.strategic}" opacity="0.6" font-weight="600">Strategic</text>
+            <text x="${(midX + M.left + plotW) / 2}" y="${M.top + 16}" text-anchor="middle" font-size="10" fill="${qColors.champion}" opacity="0.6" font-weight="600">Champions</text>
+            <text x="${(M.left + midX) / 2}" y="${M.top + plotH - 6}" text-anchor="middle" font-size="10" fill="${qColors.foundation}" opacity="0.5" font-weight="600">Foundation</text>
+            <text x="${(midX + M.left + plotW) / 2}" y="${M.top + plotH - 6}" text-anchor="middle" font-size="10" fill="${qColors.quickwin}" opacity="0.6" font-weight="600">Quick Wins</text>
+
+            <!-- X axis -->
+            <line x1="${M.left}" y1="${M.top + plotH}" x2="${M.left + plotW}" y2="${M.top + plotH}" stroke="${colors.neutral300}" stroke-width="1" />
+            ${xTicks.map(t => `<text x="${scaleX(t)}" y="${M.top + plotH + 16}" text-anchor="middle" font-size="10" fill="${colors.neutral500}">${t}</text>`).join('')}
+            <text x="${M.left + plotW / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${colors.neutral600}" font-weight="500">Feasibility Score &rarr;</text>
+
+            <!-- Y axis -->
+            <line x1="${M.left}" y1="${M.top}" x2="${M.left}" y2="${M.top + plotH}" stroke="${colors.neutral300}" stroke-width="1" />
+            ${yTicks.map(t => `<text x="${M.left - 10}" y="${scaleY(t) + 4}" text-anchor="end" font-size="10" fill="${colors.neutral500}">${t}</text>`).join('')}
+            <text x="${14}" y="${M.top + plotH / 2}" text-anchor="middle" font-size="11" fill="${colors.neutral600}" font-weight="500" transform="rotate(-90, 14, ${M.top + plotH / 2})">&uarr; Normalized Value</text>
+
+            <!-- Bubbles -->
+            ${bubbles.map(b => `
+              <circle cx="${b.x}" cy="${b.y}" r="${b.r}" fill="${b.color}" opacity="0.75" stroke="${b.color}" stroke-width="1.5" />
+              <text x="${b.x}" y="${b.y + 3}" text-anchor="middle" font-size="8" fill="white" font-weight="700">${escapeHtml(b.id)}</text>
+            `).join('')}
+
+          </svg>
+        </div>
+
+        <!-- Legend -->
+        <div style="display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin-bottom: 8px;">
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
+            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.champion};"></span> Champions
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
+            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.quickwin};"></span> Quick Wins
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
+            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.strategic};"></span> Strategic
+          </span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
+            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.foundation};"></span> Foundation
+          </span>
+        </div>
+
+        <!-- Use case key -->
+        <div class="table-wrap">
+          <table class="data-table compact" style="margin-top: 12px;">
+            <thead>
+              <tr>
+                <th style="width: 60px;">ID</th>
+                <th>Use Case</th>
+                <th class="text-center">Feasibility</th>
+                <th class="text-center">Value</th>
+                <th>Quadrant</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${bubbles.map(b => `
+              <tr>
+                <td class="font-semibold">${escapeHtml(b.id)}</td>
+                <td class="font-medium">${escapeHtml(b.name)}</td>
+                <td class="text-center">${b.feasibility}</td>
+                <td class="text-center">${b.value}</td>
+                <td><span style="color: ${b.color}; font-weight: 600;">${escapeHtml(b.tier)}</span></td>
+              </tr>
+              `).join('')}
             </tbody>
           </table>
         </div>
@@ -1648,6 +1800,7 @@ export function generateProfessionalHTMLReport(
     ${generateUseCasesTable()}
     ${generateBenefitsQuantification()}
     ${generateEffortTokenModeling()}
+    ${generateMatrixVisualization()}
     ${generatePriorityScoringRoadmap()}
     ${generateAppendix()}
 

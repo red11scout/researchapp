@@ -397,7 +397,9 @@ export function mapReportToDashboardData(report: Report): DashboardData {
     valueSuffix = "";
   }
 
-  const useCaseCount = dashboard.topUseCases?.length || 0;
+  // Use step 5 count as fallback when topUseCases is incomplete
+  const step5Count = (analysis.steps.find(s => s.step === 5)?.data as any[] | undefined)?.length || 0;
+  const useCaseCount = Math.max(dashboard.topUseCases?.length || 0, step5Count);
   const heroDescription = `We identified ${useCaseCount > 0 ? useCaseCount : 'multiple'} high-impact AI use cases focused on operational optimization and risk mitigation to drive efficiency.`;
 
   // KPI cards (kept for backward compatibility)
@@ -440,16 +442,35 @@ export function mapReportToDashboardData(report: Report): DashboardData {
   const insights = generateValueInsights(dashboard);
 
   // NEW: Value-Feasibility Matrix (1-10 scale, min-max normalization)
+  // Fallback: if topUseCases is incomplete (fewer entries than step 5 data),
+  // build the use case source from step 5/6 data directly.
+  const step5DataFull = analysis.steps.find(s => s.step === 5)?.data as any[] | undefined;
+  const step6DataFull = analysis.steps.find(s => s.step === 6)?.data as any[] | undefined;
+
+  let useCaseSource = dashboard.topUseCases || [];
+
+  if (step5DataFull && Array.isArray(step5DataFull) && useCaseSource.length < step5DataFull.length) {
+    useCaseSource = step5DataFull.map((s5: any, idx: number) => ({
+      rank: idx + 1,
+      useCase: s5["Use Case"] || s5.useCase || '',
+      priorityScore: 0, // will be overwritten from step 7
+      monthlyTokens: step6DataFull?.find((s6: any) => s6.ID === s5.ID)?.["Monthly Tokens"] || 0,
+      annualValue: typeof s5["Total Annual Value ($)"] === 'string'
+        ? parseFormattedValue(s5["Total Annual Value ($)"])
+        : (s5["Total Annual Value ($)"] || 0),
+    }));
+  }
+
   const matrixData: MatrixDataPoint[] = [];
-  if (dashboard.topUseCases && dashboard.topUseCases.length > 0) {
+  if (useCaseSource.length > 0) {
     // Step 1: Normalize annual values to 1-10 scale using min-max
-    const annualValues = dashboard.topUseCases.map(uc => uc.annualValue || 0);
+    const annualValues = useCaseSource.map(uc => uc.annualValue || 0);
     const normalizedValues = normalizeValuesToScale(annualValues);
 
     // Step 2: Read feasibility scores from Step 7 data (already computed by postprocessor)
     const step7Data = analysis.steps.find(s => s.step === 7)?.data;
 
-    dashboard.topUseCases.forEach((uc, idx) => {
+    useCaseSource.forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
       const normalizedValue = normalizedValues[idx] ?? 5.5;
 
@@ -496,8 +517,8 @@ export function mapReportToDashboardData(report: Report): DashboardData {
 
   // Use Case cards
   const useCaseItems: UseCase[] = [];
-  if (dashboard.topUseCases && dashboard.topUseCases.length > 0) {
-    dashboard.topUseCases.slice(0, 10).forEach((uc, idx) => {
+  if (useCaseSource.length > 0) {
+    useCaseSource.slice(0, 10).forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
       const step5 = analysis.steps.find(s => s.step === 5);
       let impactText = "Improves operational efficiency";

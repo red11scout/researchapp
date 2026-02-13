@@ -1368,16 +1368,64 @@ export function postProcessAnalysis(analysisResult: any): any {
     step6.data = correctedStep6Data;
   }
 
+  // ============================================
+  // STEP 7 RECOVERY: Synthesize missing records from Step 5 data
+  // ============================================
+  // The AI sometimes generates incomplete Step 7 data (fewer records than Steps 4/5/6).
+  // When this happens, synthesize the missing Step 7 records so the recalculation loop
+  // processes all use cases. The recalculation block fills in Priority Score, Feasibility
+  // Score, Value Score, TTV Score, Tier, and Phase from Step 5/6 data.
+
+  // Case 1: Step 7 exists but is incomplete
+  if (step7?.data && Array.isArray(step7.data) && correctedStep5Data.length > 0) {
+    const step7IDs = new Set((step7.data as Step7Record[]).map(r => r.ID));
+    let recoveredCount = 0;
+
+    for (const s5 of correctedStep5Data) {
+      if (!step7IDs.has(s5.ID)) {
+        (step7.data as Step7Record[]).push({
+          ID: s5.ID,
+          "Use Case": s5["Use Case"],
+          "Strategic Theme": s5["Strategic Theme"],
+        });
+        recoveredCount++;
+      }
+    }
+
+    if (recoveredCount > 0) {
+      console.log(`[postProcessAnalysis] Step 7 recovery: synthesized ${recoveredCount} missing records from Step 5 (total now: ${(step7.data as any[]).length})`);
+    }
+  }
+
+  // Case 2: Step 7 is missing entirely or empty — create from Step 5
+  let step7Active = step7;
+  if ((!step7Active || !step7Active.data || (step7Active.data as any[]).length === 0) && correctedStep5Data.length > 0) {
+    const synthesizedStep7: Step7Record[] = correctedStep5Data.map(s5 => ({
+      ID: s5.ID,
+      "Use Case": s5["Use Case"],
+      "Strategic Theme": s5["Strategic Theme"],
+    }));
+
+    if (!step7Active) {
+      const newStep7 = { step: 7, title: "Priority Scoring & Roadmap", content: "", data: synthesizedStep7 };
+      steps.push(newStep7);
+      step7Active = newStep7;
+    } else {
+      step7Active.data = synthesizedStep7;
+    }
+    console.log(`[postProcessAnalysis] Step 7 recovery: created all ${synthesizedStep7.length} records from Step 5`);
+  }
+
   // Recalculate Step 7 priority scores using new formula:
   //   Priority = (Feasibility Score × 0.5) + (Normalized Value × 0.5)
   //   Both on 1-10 scale, so Priority is 1-10
   //   Value normalization: min-max across all use cases in this report
-  if (step7?.data && Array.isArray(step7.data) && step6?.data) {
+  if (step7Active?.data && Array.isArray(step7Active.data) && step6?.data) {
     // Step 1: Collect all total annual values for min-max normalization
     const allValues: number[] = [];
     const valueByUseCase: Record<string, number> = {};
 
-    for (const record of step7.data as Step7Record[]) {
+    for (const record of step7Active.data as Step7Record[]) {
       const step5Record = correctedStep5Data.find(r => r.ID === record.ID);
       const totalValue = step5Record ? parseNumber(step5Record["Total Annual Value ($)"]) : 0;
       allValues.push(totalValue);
@@ -1387,7 +1435,7 @@ export function postProcessAnalysis(analysisResult: any): any {
     // Normalize all values to 1-10 scale using min-max
     const normalizedValues = normalizeValuesToScale(allValues);
     const normalizedByUseCase: Record<string, number> = {};
-    const step7Records = step7.data as Step7Record[];
+    const step7Records = step7Active.data as Step7Record[];
     step7Records.forEach((record, idx) => {
       normalizedByUseCase[record.ID] = normalizedValues[idx];
     });
@@ -1434,7 +1482,7 @@ export function postProcessAnalysis(analysisResult: any): any {
       console.log(`[postProcessAnalysis] Priority: ${record.ID} — Feasibility=${feasibilityScore} Value=${normalizedValue} → Priority=${priorityResult.value} → ${tier} (${phase})`);
     }
 
-    step7.data = correctedStep7Data;
+    step7Active.data = correctedStep7Data;
   }
 
   // ============================================
@@ -1468,7 +1516,7 @@ export function postProcessAnalysis(analysisResult: any): any {
   });
 
   // Get top 10 use cases by priority score (new 1-10 scale)
-  const sortedUseCases = [...(step7?.data || [])].sort(
+  const sortedUseCases = [...(step7Active?.data || step7?.data || [])].sort(
     (a: any, b: any) => (b["Priority Score"] || b["Priority Score (0-100)"] || 0) - (a["Priority Score"] || a["Priority Score (0-100)"] || 0)
   );
 
