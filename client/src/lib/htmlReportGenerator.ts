@@ -173,9 +173,8 @@ export function generateProfessionalHTMLReport(
       { id: 'use-cases', title: 'AI Use Case Generation', num: '08' },
       { id: 'benefits', title: 'Benefits Quantification', num: '09' },
       { id: 'effort-tokens', title: 'Feasibility & Token Modeling', num: '10' },
-      { id: 'value-matrix', title: 'Value-Feasibility Matrix', num: '11' },
-      { id: 'priority-roadmap', title: 'Priority Scoring & Roadmap', num: '12' },
-      { id: 'appendix', title: 'Appendix', num: '13' },
+      { id: 'priority-roadmap', title: 'Priority Scoring & Roadmap', num: '11' },
+      { id: 'appendix', title: 'Appendix', num: '12' },
     ];
 
     return `
@@ -854,151 +853,6 @@ export function generateProfessionalHTMLReport(
           Priority Score = (Feasibility &times; 0.5) + (Normalized Value &times; 0.5) on 1&ndash;10 scale |
           Tiers: Champions (&ge;7), Quick Wins, Strategic, Foundation
         </p>
-      </div>
-    `;
-  };
-
-  // Generate static 2x2 Value-Feasibility Matrix (SVG for print/HTML report)
-  const generateMatrixVisualization = (): string => {
-    const step7 = getStepData(7);
-    const step6 = getStepData(6);
-    const data = (step7.data as any[]) || [];
-
-    if (!data || data.length === 0) return '';
-
-    // Chart dimensions
-    const W = 600, H = 450;
-    const M = { top: 40, right: 30, bottom: 60, left: 60 };
-    const plotW = W - M.left - M.right;
-    const plotH = H - M.top - M.bottom;
-
-    // Scale functions (1-10 domain)
-    const scaleX = (v: number) => M.left + ((v - 1) / 9) * plotW;
-    const scaleY = (v: number) => M.top + plotH - ((v - 1) / 9) * plotH;
-    const midX = scaleX(5.5);
-    const midY = scaleY(5.5);
-
-    // Quadrant colors
-    const qColors: Record<string, string> = {
-      champion: '#059669', strategic: '#0339AF', quickwin: '#0D9488', foundation: '#94A3B8',
-    };
-
-    // Build bubble data
-    const bubbles = data.map((row: any) => {
-      const feasibility = row['Feasibility Score'] || 5;
-      const value = row['Value Score'] || 5;
-      const step6Record = (step6.data as any[])?.find((r: any) => r.ID === row.ID);
-      const ttv = step6Record?.['Time To Value'] || row['Time To Value'] || 6;
-      const ttvScore = Math.max(0, 1 - Math.min(ttv / 12, 1));
-      const r = Math.max(6, 6 + ttvScore * 14); // radius 6-20
-
-      let quadrant = 'foundation';
-      if (value >= 5.5 && feasibility >= 5.5) quadrant = 'champion';
-      else if (value >= 5.5 && feasibility < 5.5) quadrant = 'strategic';
-      else if (value < 5.5 && feasibility >= 5.5) quadrant = 'quickwin';
-
-      return {
-        id: row['ID'] || '',
-        name: row['Use Case'] || '',
-        x: scaleX(feasibility),
-        y: scaleY(value),
-        r,
-        color: qColors[quadrant],
-        quadrant,
-        feasibility,
-        value,
-        tier: row['Priority Tier'] || '',
-      };
-    });
-
-    // Generate axis ticks
-    const xTicks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    const yTicks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-
-    return `
-      <div class="section" id="value-matrix">
-        <h2 class="section-heading">Value-Feasibility Matrix</h2>
-        <p class="section-intro">Use cases plotted by Normalized Annual Value (vertical) vs. Feasibility Score (horizontal). Bubble size reflects Time-to-Value (larger = faster time-to-value). Quadrant threshold at 5.5 on both axes.</p>
-
-        <div style="text-align: center; margin: 24px 0;">
-          <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="max-width: 600px; width: 100%; height: auto; font-family: 'Inter', sans-serif;">
-
-            <!-- Quadrant backgrounds -->
-            <rect x="${M.left}" y="${M.top}" width="${midX - M.left}" height="${midY - M.top}" fill="${qColors.strategic}" opacity="0.06" />
-            <rect x="${midX}" y="${M.top}" width="${M.left + plotW - midX}" height="${midY - M.top}" fill="${qColors.champion}" opacity="0.06" />
-            <rect x="${M.left}" y="${midY}" width="${midX - M.left}" height="${M.top + plotH - midY}" fill="${qColors.foundation}" opacity="0.04" />
-            <rect x="${midX}" y="${midY}" width="${M.left + plotW - midX}" height="${M.top + plotH - midY}" fill="${qColors.quickwin}" opacity="0.06" />
-
-            <!-- Quadrant dividers -->
-            <line x1="${midX}" y1="${M.top}" x2="${midX}" y2="${M.top + plotH}" stroke="${colors.neutral300}" stroke-width="1" stroke-dasharray="6,4" />
-            <line x1="${M.left}" y1="${midY}" x2="${M.left + plotW}" y2="${midY}" stroke="${colors.neutral300}" stroke-width="1" stroke-dasharray="6,4" />
-
-            <!-- Quadrant labels -->
-            <text x="${(M.left + midX) / 2}" y="${M.top + 16}" text-anchor="middle" font-size="10" fill="${qColors.strategic}" opacity="0.6" font-weight="600">Strategic</text>
-            <text x="${(midX + M.left + plotW) / 2}" y="${M.top + 16}" text-anchor="middle" font-size="10" fill="${qColors.champion}" opacity="0.6" font-weight="600">Champions</text>
-            <text x="${(M.left + midX) / 2}" y="${M.top + plotH - 6}" text-anchor="middle" font-size="10" fill="${qColors.foundation}" opacity="0.5" font-weight="600">Foundation</text>
-            <text x="${(midX + M.left + plotW) / 2}" y="${M.top + plotH - 6}" text-anchor="middle" font-size="10" fill="${qColors.quickwin}" opacity="0.6" font-weight="600">Quick Wins</text>
-
-            <!-- X axis -->
-            <line x1="${M.left}" y1="${M.top + plotH}" x2="${M.left + plotW}" y2="${M.top + plotH}" stroke="${colors.neutral300}" stroke-width="1" />
-            ${xTicks.map(t => `<text x="${scaleX(t)}" y="${M.top + plotH + 16}" text-anchor="middle" font-size="10" fill="${colors.neutral500}">${t}</text>`).join('')}
-            <text x="${M.left + plotW / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${colors.neutral600}" font-weight="500">Feasibility Score &rarr;</text>
-
-            <!-- Y axis -->
-            <line x1="${M.left}" y1="${M.top}" x2="${M.left}" y2="${M.top + plotH}" stroke="${colors.neutral300}" stroke-width="1" />
-            ${yTicks.map(t => `<text x="${M.left - 10}" y="${scaleY(t) + 4}" text-anchor="end" font-size="10" fill="${colors.neutral500}">${t}</text>`).join('')}
-            <text x="${14}" y="${M.top + plotH / 2}" text-anchor="middle" font-size="11" fill="${colors.neutral600}" font-weight="500" transform="rotate(-90, 14, ${M.top + plotH / 2})">&uarr; Normalized Value</text>
-
-            <!-- Bubbles -->
-            ${bubbles.map(b => `
-              <circle cx="${b.x}" cy="${b.y}" r="${b.r}" fill="${b.color}" opacity="0.75" stroke="${b.color}" stroke-width="1.5" />
-              <text x="${b.x}" y="${b.y + 3}" text-anchor="middle" font-size="8" fill="white" font-weight="700">${escapeHtml(b.id)}</text>
-            `).join('')}
-
-          </svg>
-        </div>
-
-        <!-- Legend -->
-        <div style="display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin-bottom: 8px;">
-          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
-            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.champion};"></span> Champions
-          </span>
-          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
-            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.quickwin};"></span> Quick Wins
-          </span>
-          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
-            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.strategic};"></span> Strategic
-          </span>
-          <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: ${colors.neutral600};">
-            <span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: ${qColors.foundation};"></span> Foundation
-          </span>
-        </div>
-
-        <!-- Use case key -->
-        <div class="table-wrap">
-          <table class="data-table compact" style="margin-top: 12px;">
-            <thead>
-              <tr>
-                <th style="width: 60px;">ID</th>
-                <th>Use Case</th>
-                <th class="text-center">Feasibility</th>
-                <th class="text-center">Value</th>
-                <th>Quadrant</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${bubbles.map(b => `
-              <tr>
-                <td class="font-semibold">${escapeHtml(b.id)}</td>
-                <td class="font-medium">${escapeHtml(b.name)}</td>
-                <td class="text-center">${b.feasibility}</td>
-                <td class="text-center">${b.value}</td>
-                <td><span style="color: ${b.color}; font-weight: 600;">${escapeHtml(b.tier)}</span></td>
-              </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
       </div>
     `;
   };
@@ -1807,7 +1661,6 @@ export function generateProfessionalHTMLReport(
     ${generateUseCasesTable()}
     ${generateBenefitsQuantification()}
     ${generateEffortTokenModeling()}
-    ${generateMatrixVisualization()}
     ${generatePriorityScoringRoadmap()}
     ${generateAppendix()}
 
