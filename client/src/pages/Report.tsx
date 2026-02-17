@@ -422,7 +422,7 @@ const navigationSections = [
   { id: "step-3", label: "Friction Points", icon: Zap },
   { id: "step-4", label: "AI Use Cases", icon: Lightbulb },
   { id: "step-5", label: "Benefits Quantification", icon: DollarSign },
-  { id: "step-6", label: "Effort & Token Model", icon: Calculator },
+  { id: "step-6", label: "Readiness & Token Modeling", icon: Calculator },
   { id: "step-7", label: "Priority Roadmap", icon: MapPin },
 ];
 
@@ -433,7 +433,7 @@ const metricTooltips: Record<string, string> = {
   "costBenefit": "Projected annual cost savings from AI-driven process automation and efficiency improvements.",
   "cashFlowBenefit": "Projected annual cash flow improvements from accelerated collections and reduced inventory carrying costs.",
   "riskBenefit": "Projected annual risk reduction value from improved compliance, fraud detection, and quality control.",
-  "priorityScore": "Composite score (0-100) based on value potential, time-to-value, and implementation effort.",
+  "priorityScore": "Composite score (0-100) based on value potential, time-to-value, and implementation readiness.",
   "probabilityOfSuccess": "Estimated likelihood of achieving projected benefits, based on data readiness and implementation complexity.",
   "tokenCost": "Estimated annual cost for AI model token usage based on projected runs and average tokens per run.",
   "monthlyTokens": "Estimated total monthly token consumption across all AI use cases, based on projected runs and average tokens per run.",
@@ -2922,13 +2922,35 @@ export default function Report() {
                   <DropdownMenuItem onClick={handleShareHTML} data-testid="menu-share-html" className="min-h-[44px] text-sm">
                     <Share2 className="mr-2 h-4 w-4" /> Share HTML Report
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onClick={handleShareDashboard} 
+                  <DropdownMenuItem
+                    onClick={handleShareDashboard}
                     data-testid="menu-view-dashboard"
                     disabled={!data}
                     className="min-h-[44px] text-sm"
                   >
                     <LayoutDashboard className="mr-2 h-4 w-4" /> Share Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = reportId
+                        ? `/api/assumptions/export/${reportId}?format=excel`
+                        : `/api/assumptions/export?format=excel`;
+                      window.open(url, '_blank');
+                    }}
+                    className="min-h-[44px] text-sm"
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" /> Export Assumptions (Excel)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const url = reportId
+                        ? `/api/assumptions/export/${reportId}?format=json`
+                        : `/api/assumptions/export?format=json`;
+                      window.open(url, '_blank');
+                    }}
+                    className="min-h-[44px] text-sm"
+                  >
+                    <FileText className="mr-2 h-4 w-4" /> Export Assumptions (JSON)
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -3391,12 +3413,12 @@ const stepTooltips: Record<number, { title: string; description: string }> = {
     description: "Conservative financial estimates across 4 business drivers with probability-weighted total annual value for each use case." 
   },
   6: { 
-    title: "Effort & Token Modeling", 
-    description: "Implementation effort assessment and token economics including runs/month, tokens per run, data readiness, integration complexity, and annual token costs." 
+    title: "Readiness & Token Modeling",
+    description: "Implementation readiness assessment and token economics including runs/month, tokens per run, data readiness, integration complexity, and annual token costs." 
   },
   7: { 
     title: "Priority Scoring & Roadmap", 
-    description: "Priority scoring (0-100) based on value potential, time-to-value, and implementation effort. Use cases are tiered as Critical, High, or Standard with recommended implementation phases." 
+    description: "Priority scoring (0-100) based on value potential, time-to-value, and implementation readiness. Use cases are tiered as Critical, High, or Standard with recommended implementation phases." 
   },
 };
 

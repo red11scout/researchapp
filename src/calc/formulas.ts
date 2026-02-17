@@ -1124,11 +1124,11 @@ export function formatHours(hours: number, includeLabel: boolean = true): string
 }
 
 // ============================================================================
-// FEASIBILITY SCORE — 4-Component Weighted System (1-10 Scale)
+// READINESS SCORE — 4-Component Weighted System (1-10 Scale)
 // Replaces the old Effort Score (1-5) + Data Readiness + Integration Complexity + Change Mgmt
 // ============================================================================
 
-export const FEASIBILITY_WEIGHTS = {
+export const READINESS_WEIGHTS = {
   organizationalCapacity: 0.30,
   dataAvailabilityQuality: 0.30,
   technicalInfrastructure: 0.20,
@@ -1136,8 +1136,8 @@ export const FEASIBILITY_WEIGHTS = {
 } as const;
 
 /**
- * Calculate Feasibility Score from 4 weighted components (each 1-10).
- * Higher = more feasible to implement.
+ * Calculate Readiness Score from 4 weighted components (each 1-10).
+ * Higher = more ready to implement.
  *
  * Formula: (OrgCapacity × 0.30) + (DataQuality × 0.30) + (TechInfra × 0.20) + (Governance × 0.20)
  *
@@ -1147,7 +1147,7 @@ export const FEASIBILITY_WEIGHTS = {
  *   3. Technical Infrastructure (20%): Cloud/API readiness, DevOps, modern stack
  *   4. Governance (20%): AI ethics, model monitoring, compliance frameworks
  */
-export function calculateFeasibilityScore(inputs: {
+export function calculateReadinessScore(inputs: {
   organizationalCapacity: number;     // 1-10
   dataAvailabilityQuality: number;    // 1-10
   technicalInfrastructure: number;    // 1-10
@@ -1165,10 +1165,10 @@ export function calculateFeasibilityScore(inputs: {
   const gov = Math.max(1, Math.min(10, inputs.governance));
 
   const score =
-    (oc * FEASIBILITY_WEIGHTS.organizationalCapacity) +
-    (dq * FEASIBILITY_WEIGHTS.dataAvailabilityQuality) +
-    (ti * FEASIBILITY_WEIGHTS.technicalInfrastructure) +
-    (gov * FEASIBILITY_WEIGHTS.governance);
+    (oc * READINESS_WEIGHTS.organizationalCapacity) +
+    (dq * READINESS_WEIGHTS.dataAvailabilityQuality) +
+    (ti * READINESS_WEIGHTS.technicalInfrastructure) +
+    (gov * READINESS_WEIGHTS.governance);
 
   // Round to 2 decimal places
   const roundedScore = Math.round(score * 100) / 100;
@@ -1180,13 +1180,13 @@ export function calculateFeasibilityScore(inputs: {
     technicalInfrastructure: ti,
     governance: gov,
     trace: {
-      formula: `(OrgCapacity × ${FEASIBILITY_WEIGHTS.organizationalCapacity}) + (DataQuality × ${FEASIBILITY_WEIGHTS.dataAvailabilityQuality}) + (TechInfra × ${FEASIBILITY_WEIGHTS.technicalInfrastructure}) + (Governance × ${FEASIBILITY_WEIGHTS.governance})`,
+      formula: `(OrgCapacity × ${READINESS_WEIGHTS.organizationalCapacity}) + (DataQuality × ${READINESS_WEIGHTS.dataAvailabilityQuality}) + (TechInfra × ${READINESS_WEIGHTS.technicalInfrastructure}) + (Governance × ${READINESS_WEIGHTS.governance})`,
       inputs: { organizationalCapacity: oc, dataAvailabilityQuality: dq, technicalInfrastructure: ti, governance: gov },
       intermediates: {
-        ocWeighted: oc * FEASIBILITY_WEIGHTS.organizationalCapacity,
-        dqWeighted: dq * FEASIBILITY_WEIGHTS.dataAvailabilityQuality,
-        tiWeighted: ti * FEASIBILITY_WEIGHTS.technicalInfrastructure,
-        govWeighted: gov * FEASIBILITY_WEIGHTS.governance,
+        ocWeighted: oc * READINESS_WEIGHTS.organizationalCapacity,
+        dqWeighted: dq * READINESS_WEIGHTS.dataAvailabilityQuality,
+        tiWeighted: ti * READINESS_WEIGHTS.technicalInfrastructure,
+        govWeighted: gov * READINESS_WEIGHTS.governance,
       },
       output: roundedScore,
     },
@@ -1249,7 +1249,7 @@ export function calculateTTVBubbleScore(ttvMonths: number): number {
 }
 
 // ============================================================================
-// NEW PRIORITY SCORING — Simple 50/50 Feasibility + Value
+// NEW PRIORITY SCORING — Simple 50/50 Readiness + Value
 // Replaces the 5-criterion weighted matrix
 // ============================================================================
 
@@ -1261,24 +1261,24 @@ export const NEW_PRIORITY_TIERS = {
 } as const;
 
 /**
- * New Priority Score = (Feasibility Score × 0.5) + (Normalized Value Score × 0.5)
+ * New Priority Score = (Readiness Score × 0.5) + (Normalized Value Score × 0.5)
  * Both inputs on 1-10 scale → output is 1-10
  */
 export function calculateNewPriorityScore(inputs: {
-  feasibilityScore: number;  // 1-10
+  readinessScore: number;  // 1-10
   normalizedValue: number;   // 1-10
 }): CalculationResult {
-  const fs = Math.max(1, Math.min(10, inputs.feasibilityScore));
+  const rs = Math.max(1, Math.min(10, inputs.readinessScore));
   const nv = Math.max(1, Math.min(10, inputs.normalizedValue));
 
-  const score = (fs * 0.5) + (nv * 0.5);
+  const score = (rs * 0.5) + (nv * 0.5);
   const roundedScore = Math.round(score * 100) / 100;
 
   return {
     value: roundedScore,
     trace: {
-      formula: '(Feasibility × 0.5) + (NormalizedValue × 0.5)',
-      inputs: { feasibilityScore: fs, normalizedValue: nv },
+      formula: '(Readiness × 0.5) + (NormalizedValue × 0.5)',
+      inputs: { readinessScore: rs, normalizedValue: nv },
       output: roundedScore,
     },
   };
@@ -1287,27 +1287,27 @@ export function calculateNewPriorityScore(inputs: {
 /**
  * New Priority Tier Assignment — aligned with matrix quadrants
  * Tier 1 Champions: Priority >= 7.5
- * Tier 2 Quick Wins: Value < 5.5 AND Feasibility >= 5.5
- * Tier 3 Strategic: Value >= 5.5 AND Feasibility < 5.5
+ * Tier 2 Quick Wins: Value < 5.5 AND Readiness >= 5.5
+ * Tier 3 Strategic: Value >= 5.5 AND Readiness < 5.5
  * Tier 4 Foundation: everything else (Priority < 5.0)
  */
 export function getNewPriorityTier(
   priorityScore: number,
   normalizedValue: number,
-  feasibilityScore: number
+  readinessScore: number
 ): string {
   if (priorityScore >= 7.5) return NEW_PRIORITY_TIERS.TIER_1.label;
-  if (normalizedValue < 5.5 && feasibilityScore >= 5.5) return NEW_PRIORITY_TIERS.TIER_2.label;
-  if (normalizedValue >= 5.5 && feasibilityScore < 5.5) return NEW_PRIORITY_TIERS.TIER_3.label;
+  if (normalizedValue < 5.5 && readinessScore >= 5.5) return NEW_PRIORITY_TIERS.TIER_2.label;
+  if (normalizedValue >= 5.5 && readinessScore < 5.5) return NEW_PRIORITY_TIERS.TIER_3.label;
   return NEW_PRIORITY_TIERS.TIER_4.label;
 }
 
 /**
- * Recommended phase based on new priority and feasibility
+ * Recommended phase based on new priority and readiness
  */
-export function getNewRecommendedPhase(priorityScore: number, feasibilityScore: number): string {
-  if (priorityScore >= 7.5 && feasibilityScore >= 6) return 'Q1';
-  if (priorityScore >= 6.0 && feasibilityScore >= 5) return 'Q2';
+export function getNewRecommendedPhase(priorityScore: number, readinessScore: number): string {
+  if (priorityScore >= 7.5 && readinessScore >= 6) return 'Q1';
+  if (priorityScore >= 6.0 && readinessScore >= 5) return 'Q2';
   if (priorityScore >= 4.5) return 'Q3';
   return 'Q4';
 }

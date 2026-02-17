@@ -1236,7 +1236,7 @@ export async function generateBoardPresentationPDF(data: any, companyName: strin
       } else if (isStep3) {
         limitedColumns = ['Friction Point', 'Function', 'Sub-Function', 'Role', 'Estimated Annual Cost ($)', 'Severity', 'Primary Driver Impact', 'Strategic Theme'];
       } else if (isStep6) {
-        limitedColumns = ['ID', 'Use Case Name', 'Time-to-Value', 'Data Readiness', 'Integration Complexity', 'Effort Score', 'Change Mgmt', 'Monthly Tokens', 'Runs/Month', 'Input Tokens/Run', 'Output Tokens/Run', 'Annual Token Cost'];
+        limitedColumns = ['ID', 'Use Case Name', 'Time-to-Value', 'Data Readiness', 'Integration Complexity', 'Readiness Score', 'Change Mgmt', 'Monthly Tokens', 'Runs/Month', 'Input Tokens/Run', 'Output Tokens/Run', 'Annual Token Cost'];
       } else {
         const maxCols = isNarrativeStep ? 4 : 6;
         limitedColumns = displayColumns.slice(0, maxCols);

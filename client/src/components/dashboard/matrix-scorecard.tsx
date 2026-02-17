@@ -4,7 +4,7 @@ import { chartColors } from './chart-config';
 
 interface MatrixDataPoint {
   name: string;
-  x: number;  // Feasibility Score (1-10)
+  x: number;  // Readiness Score (1-10)
   y: number;  // Normalized Annual Value (1-10)
   z: number;  // TTV bubble score (0-1)
   type: string;
@@ -13,7 +13,7 @@ interface MatrixDataPoint {
   priorityTier?: string;
   priorityScore?: number;
   annualValue?: number;
-  feasibilityScore?: number;
+  readinessScore?: number;
   normalizedValue?: number;
   organizationalCapacity?: number;
   dataAvailabilityQuality?: number;
@@ -131,7 +131,7 @@ export function MatrixScorecard({ data, onRowClick }: MatrixScorecardProps) {
               className="text-center py-2 px-2 text-slate-400 font-semibold cursor-pointer hover:text-slate-200 transition-colors"
               onClick={() => toggleSort('x')}
             >
-              Feasibility <SortIcon col="x" />
+              Readiness <SortIcon col="x" />
             </th>
             <th
               className="text-center py-2 px-2 text-slate-400 font-semibold cursor-pointer hover:text-slate-200 transition-colors"

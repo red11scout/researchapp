@@ -32,7 +32,7 @@ export const copy = {
     },
     useCases: {
       title: 'AI Use Cases',
-      subtitle: 'Targeted opportunities ranked by impact and feasibility',
+      subtitle: 'Targeted opportunities ranked by impact and readiness',
     },
     benefits: {
       title: 'Quantified Benefits',
@@ -149,7 +149,7 @@ export const copy = {
     timeToValue: 'Estimated months to realize projected benefits',
     confidence: 'Estimate reliability based on data quality and assumptions',
     tokenCost: 'Monthly inference cost at projected transaction volume',
-    priorityScore: 'Weighted composite of impact (40%), feasibility (30%), strategic fit (30%)',
+    priorityScore: 'Weighted composite of impact (40%), readiness (30%), strategic fit (30%)',
     tier: 'Critical: Deploy immediately. High: Next quarter. Medium: This year. Low: Evaluate.',
     revenue: 'Direct revenue increase from AI implementation',
     cost: 'Operational cost reduction from automation and efficiency',

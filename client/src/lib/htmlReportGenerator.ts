@@ -172,7 +172,7 @@ export function generateProfessionalHTMLReport(
       { id: 'friction-mapping', title: 'Friction Point Mapping', num: '07' },
       { id: 'use-cases', title: 'AI Use Case Generation', num: '08' },
       { id: 'benefits', title: 'Benefits Quantification', num: '09' },
-      { id: 'effort-tokens', title: 'Feasibility & Token Modeling', num: '10' },
+      { id: 'effort-tokens', title: 'Readiness & Token Modeling', num: '10' },
       { id: 'priority-roadmap', title: 'Priority Scoring & Roadmap', num: '11' },
       { id: 'appendix', title: 'Appendix', num: '12' },
     ];
@@ -750,14 +750,14 @@ export function generateProfessionalHTMLReport(
 
     return `
       <div class="section" id="effort-tokens">
-        <h2 class="section-heading">Feasibility & Token Modeling</h2>
+        <h2 class="section-heading">Readiness & Token Modeling</h2>
         <div class="table-wrap scrollable">
           <table class="data-table compact">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>Use Case</th>
-                <th class="text-center">Feasibility</th>
+                <th class="text-center">Readiness</th>
                 <th class="text-center">Org Capacity</th>
                 <th class="text-center">Data Quality</th>
                 <th class="text-center">Tech Infra</th>
@@ -777,7 +777,7 @@ export function generateProfessionalHTMLReport(
               <tr>
                 <td class="font-semibold">${escapeHtml(row['ID'] || '')}</td>
                 <td class="font-medium">${escapeHtml(row['Use Case'] || row['Use Case Name'] || '')}</td>
-                <td class="text-center"><span class="score-pill">${row['Feasibility Score'] || row['Effort Score'] || '–'}</span></td>
+                <td class="text-center"><span class="score-pill">${row['Readiness Score'] || row['Feasibility Score'] || row['Effort Score'] || '–'}</span></td>
                 <td class="text-center"><span class="score-circle">${row['Organizational Capacity'] || row['Change Mgmt'] || '–'}</span></td>
                 <td class="text-center"><span class="score-circle">${row['Data Availability & Quality'] || row['Data Readiness'] || '–'}</span></td>
                 <td class="text-center"><span class="score-circle">${row['Technical Infrastructure'] || row['Integration Complexity'] || '–'}</span></td>
@@ -822,7 +822,7 @@ export function generateProfessionalHTMLReport(
                 <th>Priority Tier</th>
                 <th>Recommended Phase</th>
                 <th class="text-center">Priority Score</th>
-                <th class="text-center">Feasibility Score</th>
+                <th class="text-center">Readiness Score</th>
                 <th class="text-center">Value Score</th>
                 <th class="text-center">TTV Score</th>
                 <th>Strategic Theme</th>
@@ -838,7 +838,7 @@ export function generateProfessionalHTMLReport(
                 <td>${escapeHtml(row['Priority Tier'] || '')}</td>
                 <td><span class="tag tag-sky">${escapeHtml(row['Recommended Phase'] || '')}</span></td>
                 <td class="text-center"><span class="score-pill">${row['Priority Score'] || row['Priority Score (0-100)'] || 0}</span></td>
-                <td class="text-center">${row['Feasibility Score'] || '–'}</td>
+                <td class="text-center">${row['Readiness Score'] || row['Feasibility Score'] || '–'}</td>
                 <td class="text-center">${row['Value Score'] || row['Value Score (0-40)'] || 0}</td>
                 <td class="text-center">${row['TTV Score'] || row['TTV Score (0-30)'] || 0}</td>
                 <td>${escapeHtml(row['Strategic Theme'] || '')}</td>
@@ -850,7 +850,7 @@ export function generateProfessionalHTMLReport(
           </table>
         </div>
         <p class="table-footnote">
-          Priority Score = (Feasibility &times; 0.5) + (Normalized Value &times; 0.5) on 1&ndash;10 scale |
+          Priority Score = (Readiness &times; 0.5) + (Normalized Value &times; 0.5) on 1&ndash;10 scale |
           Tiers: Champions (&ge;7), Quick Wins, Strategic, Foundation
         </p>
       </div>
@@ -913,9 +913,9 @@ export function generateProfessionalHTMLReport(
 
           <p style="margin-bottom: 12px;"><strong>Value Normalization (1&ndash;10):</strong> Min-max normalization across all use cases: Score = 1 + ((Value &minus; Min) / (Max &minus; Min)) &times; 9. Ensures relative comparison is deterministic and scales dynamically with report data.</p>
 
-          <p style="margin-bottom: 12px;"><strong>Feasibility Score (1&ndash;10):</strong> Weighted composite of four components: Organizational Capacity (30%), Data Availability &amp; Quality (30%), Technical Infrastructure (20%), and AI-Specific Governance (20%). Each component scored 1&ndash;10 based on organizational assessment.</p>
+          <p style="margin-bottom: 12px;"><strong>Readiness Score (1&ndash;10):</strong> Weighted composite of four components: Organizational Capacity (30%), Data Availability &amp; Quality (30%), Technical Infrastructure (20%), and AI-Specific Governance (20%). Each component scored 1&ndash;10 based on organizational assessment.</p>
 
-          <p style="margin-bottom: 12px;"><strong>Priority Score (1&ndash;10):</strong> Equal-weighted average of Feasibility Score and Normalized Value Score: (Feasibility &times; 0.5) + (Value &times; 0.5). Determines tier placement: Champions (&ge;7.5), Quick Wins, Strategic, or Foundation.</p>
+          <p style="margin-bottom: 12px;"><strong>Priority Score (1&ndash;10):</strong> Equal-weighted average of Readiness Score and Normalized Value Score: (Readiness &times; 0.5) + (Value &times; 0.5). Determines tier placement: Champions (&ge;7.5), Quick Wins, Strategic, or Foundation.</p>
 
           <h4 style="margin: 16px 0 8px; font-size: 14px;">Standard Benefit Formulas</h4>
           <ul class="assumption-list">

@@ -5,6 +5,7 @@ import { generateCompanyAnalysis, generateWhatIfSuggestion, checkProductionConfi
 import * as formulaService from "./formula-service";
 import { dubService } from "./dub-service";
 import { insertReportSchema } from "@shared/schema";
+import { buildAssumptionExcelWorkbook, buildAssumptionJSON } from "./assumption-export";
 import { nanoid } from "nanoid";
 import multer from "multer";
 import { createRequire } from "module";
@@ -1592,6 +1593,46 @@ Return ONLY valid JSON with this structure:
     }
   });
 
+  // Export all assumption/reference data (Excel or JSON)
+  app.get("/api/assumptions/export/:reportId?", async (req, res) => {
+    try {
+      const format = (req.query.format as string) || "json";
+      const { reportId } = req.params;
+
+      // Optionally load report-specific assumptions
+      let reportAssumptions: any[] | undefined;
+      if (reportId) {
+        const activeSet = await storage.getActiveAssumptionSet(reportId);
+        if (activeSet) {
+          const fields = await storage.getAssumptionFieldsBySet(activeSet.id);
+          reportAssumptions = fields.map((f: any) => ({
+            category: f.category,
+            fieldName: f.fieldName,
+            displayName: f.displayName,
+            value: f.value,
+            valueType: f.valueType,
+            unit: f.unit,
+            description: f.description,
+          }));
+        }
+      }
+
+      if (format === "excel") {
+        const workbook = buildAssumptionExcelWorkbook(reportAssumptions);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="assumptions-export.xlsx"`);
+        await workbook.xlsx.write(res);
+        res.end();
+      } else {
+        const data = buildAssumptionJSON(reportAssumptions);
+        res.json(data);
+      }
+    } catch (error) {
+      console.error("Error exporting assumptions:", error);
+      return res.status(500).json({ error: "Failed to export assumptions" });
+    }
+  });
+
   // Recalculate report based on assumptions
   app.post("/api/assumptions/recalculate/:reportId", async (req, res) => {
     try {
@@ -1653,7 +1694,7 @@ Return ONLY valid JSON with this structure:
           step7.data = step7.data.map((row: any) => {
             const valueScore = parseFloat(row['Value Score']) || 0;
             const ttvScore = parseFloat(row['TTV Score']) || 0;
-            const effortScore = parseFloat(row['Effort Score']) || 0;
+            const effortScore = parseFloat(row['Readiness Score'] || row['Effort Score']) || 0;
             
             // Recalculate priority score with new weights
             const priorityScore = Math.round(

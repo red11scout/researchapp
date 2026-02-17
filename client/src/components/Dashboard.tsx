@@ -87,7 +87,7 @@ interface ValueInsight {
 
 interface MatrixDataPoint {
   name: string;
-  x: number;  // Feasibility Score (1-10)
+  x: number;  // Readiness Score (1-10)
   y: number;  // Normalized Annual Value (1-10)
   z: number;  // TTV bubble score (0-1, higher = faster time-to-value)
   type: string;  // Quadrant label: Champion, Strategic, Quick Win, Foundation
@@ -97,7 +97,7 @@ interface MatrixDataPoint {
   priorityTier?: string;      // Tier label — bubble color
   priorityScore?: number;     // 1-10 — tooltip detail
   annualValue?: number;       // raw $ amount — tooltip detail
-  feasibilityScore?: number;  // 1-10 composite
+  readinessScore?: number;  // 1-10 composite
   normalizedValue?: number;   // 1-10 min-max normalized
   organizationalCapacity?: number;    // 1-10 component
   dataAvailabilityQuality?: number;   // 1-10 component
@@ -183,7 +183,7 @@ const DEFAULT_DATA: DashboardData = {
   },
   priorityMatrix: {
     title: "Value-Readiness Matrix",
-    description: "Initiatives mapped by Business Value vs. Implementation Readiness.\nBubble size indicates Implementation Effort (smaller = easier).",
+    description: "Initiatives mapped by Business Value vs. Implementation Readiness.\nBubble size indicates Implementation Readiness (larger = more ready).",
     data: [
       { name: 'Auto Credit Memo', x: 35, y: 85, z: 4, type: 'Strategic Bet', color: BRAND.primary },
       { name: 'AML Alert Triage', x: 70, y: 75, z: 3, type: 'Champion', color: BRAND.success },
@@ -554,9 +554,9 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
         <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
           <p className="text-sm font-semibold text-slate-300 mb-1">Quadrant: {point.type}</p>
           <p className="text-xs text-slate-500">
-            {point.type === 'Champion' && 'High value and high feasibility. Execute immediately.'}
-            {point.type === 'Strategic' && 'High value but lower feasibility. Worth the investment with planning.'}
-            {point.type === 'Quick Win' && 'Lower value but highly feasible. Fast time-to-value.'}
+            {point.type === 'Champion' && 'High value and high readiness. Execute immediately.'}
+            {point.type === 'Strategic' && 'High value but lower readiness. Worth the investment with planning.'}
+            {point.type === 'Quick Win' && 'Lower value but high readiness. Fast time-to-value.'}
             {point.type === 'Foundation' && 'Building blocks for future AI maturity. Invest strategically.'}
           </p>
         </div>
@@ -573,15 +573,15 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
         <div className="mb-6">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Scoring Breakdown</p>
           {scoreBar('Normalized Value', Math.round(point.y * 10) / 10, 10, '#059669')}
-          {scoreBar('Feasibility', Math.round(point.x * 10) / 10, 10, '#0339AF')}
+          {scoreBar('Readiness', Math.round(point.x * 10) / 10, 10, '#0339AF')}
           {point.priorityScore != null && point.priorityScore > 0 && scoreBar('Priority Score', Math.round(point.priorityScore * 10) / 10, 10, '#4C73E9')}
           {point.timeToValue != null && scoreBar('Time to Value', point.timeToValue, 24, '#0D9488')}
         </div>
 
-        {/* Feasibility Components */}
+        {/* Readiness Components */}
         {(point.organizationalCapacity || point.dataAvailabilityQuality || point.technicalInfrastructure || point.governance) && (
           <div className="mb-6">
-            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Feasibility Components</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Readiness Components</p>
             {point.organizationalCapacity != null && scoreBar('Organizational Capacity', point.organizationalCapacity, 10, '#38BDF8')}
             {point.dataAvailabilityQuality != null && scoreBar('Data Availability & Quality', point.dataAvailabilityQuality, 10, '#F59E0B')}
             {point.technicalInfrastructure != null && scoreBar('Technical Infrastructure', point.technicalInfrastructure, 10, '#A78BFA')}

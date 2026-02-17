@@ -24,7 +24,7 @@ import {
   calculateFrictionRecovery,
   generateThreeScenarioSummary,
   calculateMultiYearProjection,
-  calculateFeasibilityScore,
+  calculateReadinessScore,
   normalizeValuesToScale,
   normalizeValueToScale,
   calculateTTVBubbleScore,
@@ -198,6 +198,7 @@ interface Step7Record {
   "Use Case": string;
   // New scoring system (1-10 scale)
   "Priority Score"?: number;
+  "Readiness Score"?: number;
   "Feasibility Score"?: number;
   "Value Score"?: number;
   "TTV Score"?: number;
@@ -1281,8 +1282,8 @@ export function postProcessAnalysis(analysisResult: any): any {
     }
   }
 
-  // Recalculate Step 6: New 4-component feasibility score (1-10) + token costs
-  // Column order: ID, Use Case, Feasibility Score, Organizational Capacity,
+  // Recalculate Step 6: New 4-component readiness score (1-10) + token costs
+  // Column order: ID, Use Case, Readiness Score, Organizational Capacity,
   //   Data Availability & Quality, Technical Infrastructure, Governance,
   //   Time To Value, Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost
   let totalMonthlyTokens = 0;
@@ -1301,7 +1302,7 @@ export function postProcessAnalysis(analysisResult: any): any {
       const tokenResult = calculateTokenCostFromStep6(record);
       totalMonthlyTokens += tokenResult.monthlyTokens;
 
-      // Extract 4 feasibility components — support both new (1-10) and legacy (1-5) field names
+      // Extract 4 readiness components — support both new (1-10) and legacy (1-5) field names
       // New fields come from updated AI prompt; legacy fields from older reports
       const orgCapacity = record["Organizational Capacity"]
         ?? record["Change Mgmt (1-5)"] ?? record["Change Mgmt"] ?? 5;
@@ -1328,8 +1329,8 @@ export function postProcessAnalysis(analysisResult: any): any {
       const ti = hasNewFields ? Math.min(10, Math.max(1, Math.round(techInfra as number))) : scaleToTen(techInfra as number);
       const gov = hasNewFields ? Math.min(10, Math.max(1, Math.round(governance as number))) : scaleToTen(governance as number);
 
-      // Calculate composite feasibility score using weighted formula
-      const feasibilityResult = calculateFeasibilityScore({
+      // Calculate composite readiness score using weighted formula
+      const readinessResult = calculateReadinessScore({
         organizationalCapacity: oc,
         dataAvailabilityQuality: dq,
         technicalInfrastructure: ti,
@@ -1342,7 +1343,7 @@ export function postProcessAnalysis(analysisResult: any): any {
       const orderedRecord: Record<string, any> = {
         "ID": record.ID,
         "Use Case": record["Use Case"],
-        "Feasibility Score": feasibilityResult.value,
+        "Readiness Score": readinessResult.value,
         "Organizational Capacity": oc,
         "Data Availability & Quality": dq,
         "Technical Infrastructure": ti,
@@ -1362,7 +1363,7 @@ export function postProcessAnalysis(analysisResult: any): any {
 
       correctedStep6Data.push(orderedRecord);
 
-      console.log(`[postProcessAnalysis] Feasibility: ${record.ID} — OC=${oc} DQ=${dq} TI=${ti} GOV=${gov} → Score=${feasibilityResult.value}`);
+      console.log(`[postProcessAnalysis] Readiness: ${record.ID} — OC=${oc} DQ=${dq} TI=${ti} GOV=${gov} → Score=${readinessResult.value}`);
     }
 
     step6.data = correctedStep6Data;
@@ -1373,7 +1374,7 @@ export function postProcessAnalysis(analysisResult: any): any {
   // ============================================
   // The AI sometimes generates incomplete Step 7 data (fewer records than Steps 4/5/6).
   // When this happens, synthesize the missing Step 7 records so the recalculation loop
-  // processes all use cases. The recalculation block fills in Priority Score, Feasibility
+  // processes all use cases. The recalculation block fills in Priority Score, Readiness
   // Score, Value Score, TTV Score, Tier, and Phase from Step 5/6 data.
 
   // Case 1: Step 7 exists but is incomplete
@@ -1417,7 +1418,7 @@ export function postProcessAnalysis(analysisResult: any): any {
   }
 
   // Recalculate Step 7 priority scores using new formula:
-  //   Priority = (Feasibility Score × 0.5) + (Normalized Value × 0.5)
+  //   Priority = (Readiness Score × 0.5) + (Normalized Value × 0.5)
   //   Both on 1-10 scale, so Priority is 1-10
   //   Value normalization: min-max across all use cases in this report
   if (step7Active?.data && Array.isArray(step7Active.data) && step6?.data) {
@@ -1445,29 +1446,29 @@ export function postProcessAnalysis(analysisResult: any): any {
 
     for (const record of step7Records) {
       const step6Record = (step6.data as any[]).find(r => r.ID === record.ID);
-      const feasibilityScore = step6Record?.["Feasibility Score"] ?? 5;
+      const readinessScore = step6Record?.["Readiness Score"] ?? step6Record?.["Feasibility Score"] ?? 5;
       const normalizedValue = normalizedByUseCase[record.ID] ?? 5.5;
       const ttv = step6Record?.["Time To Value"] ?? step6Record?.["Time-to-Value"] ?? 6;
 
-      // New priority: (Feasibility × 0.5) + (Normalized Value × 0.5)
+      // New priority: (Readiness × 0.5) + (Normalized Value × 0.5)
       const priorityResult = calculateNewPriorityScore({
-        feasibilityScore,
+        readinessScore,
         normalizedValue,
       });
 
       const ttvScore = calculateTTVBubbleScore(ttv as number);
-      const tier = getNewPriorityTier(priorityResult.value, normalizedValue, feasibilityScore);
-      const phase = getNewRecommendedPhase(priorityResult.value, feasibilityScore);
+      const tier = getNewPriorityTier(priorityResult.value, normalizedValue, readinessScore);
+      const phase = getNewRecommendedPhase(priorityResult.value, readinessScore);
 
       // Build record with new column order:
-      // ID, Use Case, Priority Tier, Recommended Phase, Priority Score, Feasibility Score, Value Score, TTV Score
+      // ID, Use Case, Priority Tier, Recommended Phase, Priority Score, Readiness Score, Value Score, TTV Score
       const step7Entry: Record<string, any> = {
         "ID": record.ID,
         "Use Case": record["Use Case"],
         "Priority Tier": tier,
         "Recommended Phase": phase,
         "Priority Score": priorityResult.value,
-        "Feasibility Score": feasibilityScore,
+        "Readiness Score": readinessScore,
         "Value Score": normalizedValue,
         "TTV Score": Math.round(ttvScore * 100) / 100,
       };
@@ -1479,7 +1480,7 @@ export function postProcessAnalysis(analysisResult: any): any {
 
       correctedStep7Data.push(step7Entry);
 
-      console.log(`[postProcessAnalysis] Priority: ${record.ID} — Feasibility=${feasibilityScore} Value=${normalizedValue} → Priority=${priorityResult.value} → ${tier} (${phase})`);
+      console.log(`[postProcessAnalysis] Priority: ${record.ID} — Readiness=${readinessScore} Value=${normalizedValue} → Priority=${priorityResult.value} → ${tier} (${phase})`);
     }
 
     step7Active.data = correctedStep7Data;

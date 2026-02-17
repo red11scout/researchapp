@@ -662,10 +662,10 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
     "Sub-Function",
     "Strategic Theme",
   ],
-  6: [ // Feasibility & Token Modeling
+  6: [ // Readiness & Token Modeling
     "ID",
     "Use Case",
-    "Feasibility Score",
+    "Readiness Score",
     "Organizational Capacity",
     "Data Availability & Quality",
     "Technical Infrastructure",
@@ -683,7 +683,7 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
     "Priority Tier",
     "Recommended Phase",
     "Priority Score",
-    "Feasibility Score",
+    "Readiness Score",
     "Value Score",
     "TTV Score",
   ],
@@ -702,12 +702,13 @@ export const COLUMN_NAME_ALIASES: Record<string, string> = {
   "Use Case": "Use Case Name",
   "HITL Checkpoint": "Human-in-the-Loop Checkpoint",
   "Human-in-the-Loop": "Human-in-the-Loop Checkpoint",
-  // Step 6 — new 4-component feasibility system
+  // Step 6 — new 4-component readiness system
   "Organizational Capacity (1-10)": "Organizational Capacity",
   "Data Availability & Quality (1-10)": "Data Availability & Quality",
   "Technical Infrastructure (1-10)": "Technical Infrastructure",
   "Governance (1-10)": "Governance",
-  "Feasibility Score (1-10)": "Feasibility Score",
+  "Feasibility Score (1-10)": "Readiness Score",
+  "Readiness Score (1-10)": "Readiness Score",
   // Step 6 — legacy aliases (backward compat)
   "Data Readiness (1-5)": "Data Readiness",
   "Integration Complexity (1-5)": "Integration Complexity",
@@ -721,7 +722,7 @@ export const COLUMN_NAME_ALIASES: Record<string, string> = {
   "TTV (months)": "Time To Value",
   // Step 7 — new priority system
   "Priority Score (1-10)": "Priority Score",
-  "Feasibility Score": "Feasibility Score",
+  "Feasibility Score": "Readiness Score",
   "Value Score (1-10)": "Value Score",
   "TTV Score (0-1)": "TTV Score",
   // Step 2 benchmark rename

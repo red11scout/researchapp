@@ -35,14 +35,14 @@ const METHODOLOGY_ITEMS: MethodologyItem[] = [
     description: "Min-max normalization across all use cases: Score = 1 + ((Value - Min) / (Max - Min)) × 9. Ensures relative comparison is deterministic and scales dynamically with report data.",
   },
   {
-    title: "Feasibility Score",
+    title: "Readiness Score",
     range: "1–10",
     description: "Weighted composite of four components: Organizational Capacity (30%), Data Availability & Quality (30%), Technical Infrastructure (20%), and AI-Specific Governance (20%). Each component scored 1–10 based on organizational assessment.",
   },
   {
     title: "Priority Score",
     range: "1–10",
-    description: "Equal-weighted average of Feasibility Score and Normalized Value Score: (Feasibility × 0.5) + (Value × 0.5). Determines tier placement: Champions (≥7.5), Quick Wins, Strategic, or Foundation.",
+    description: "Equal-weighted average of Readiness Score and Normalized Value Score: (Readiness × 0.5) + (Value × 0.5). Determines tier placement: Champions (≥7.5), Quick Wins, Strategic, or Foundation.",
   },
 ];
 

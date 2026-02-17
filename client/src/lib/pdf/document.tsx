@@ -390,7 +390,7 @@ function UseCasesTable({ useCases }: { useCases: any[] }) {
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>AI Use Cases</Text>
       <Text style={styles.sectionSubtitle}>
-        Prioritized opportunities ranked by impact and feasibility
+        Prioritized opportunities ranked by impact and readiness
       </Text>
       
       <View style={styles.table}>

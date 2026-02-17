@@ -7,7 +7,7 @@ import { chartColors } from './chart-config';
 
 interface MatrixDataPoint {
   name: string;
-  x: number;  // Feasibility Score (1-10)
+  x: number;  // Readiness Score (1-10)
   y: number;  // Normalized Annual Value (1-10)
   z: number;  // TTV bubble score (0-1)
   type: string;
@@ -16,7 +16,7 @@ interface MatrixDataPoint {
   priorityTier?: string;
   priorityScore?: number;
   annualValue?: number;
-  feasibilityScore?: number;
+  readinessScore?: number;
   normalizedValue?: number;
   organizationalCapacity?: number;
   dataAvailabilityQuality?: number;
@@ -346,7 +346,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fontWeight={600}
           fill="#94a3b8"
         >
-          Feasibility Score
+          Readiness Score
         </text>
 
         {/* Y-axis ticks and labels (dynamic) */}
@@ -486,7 +486,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
                   <span className="font-semibold text-slate-700">{Math.round(hoveredPoint.y * 10) / 10}/10</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">Feasibility</span>
+                  <span className="text-slate-400 block">Readiness</span>
                   <span className="font-semibold text-slate-700">{Math.round(hoveredPoint.x * 10) / 10}/10</span>
                 </div>
                 <div>

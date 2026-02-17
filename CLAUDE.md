@@ -25,19 +25,19 @@
 - Schema: `shared/schema.ts` (reports, sharedDashboards, userSessions, userEdits, etc.)
 
 ## Key Files
-- `server/calculation-postprocessor.ts` — Central post-processing: friction costs, benefits, feasibility, priority
+- `server/calculation-postprocessor.ts` — Central post-processing: friction costs, benefits, readiness, priority
 - `server/ai-service.ts` — AI prompts and Claude API calls (Hemingway voice, structured output)
-- `src/calc/formulas.ts` — Deterministic formula registry (feasibility, priority, normalization, benefits)
+- `src/calc/formulas.ts` — Deterministic formula registry (readiness, priority, normalization, benefits)
 - `src/calc/engine.ts` — HyperFormula wrapper for interactive editing
 - `client/src/components/Dashboard.tsx` — Main dashboard (hero, executive summary, matrix, methodology)
 - `client/src/lib/dashboardMapper.ts` — Transforms raw report data into DashboardData
-- `client/src/components/dashboard/quadrant-bubble-chart.tsx` — D3 bubble chart (Feasibility vs Value)
+- `client/src/components/dashboard/quadrant-bubble-chart.tsx` — D3 bubble chart (Readiness vs Value)
 - `client/src/components/dashboard/methodology-section.tsx` — Expandable methodology explanations
 - `shared/taxonomy.ts` — Column ordering, function normalization, formula annotation
 - `shared/standardizedRoles.ts` — 25 standardized roles with loaded hourly rates ($45-$175/hr)
 
 ## Scoring System (1-10 Scale)
-### Feasibility Score (Step 6)
+### Readiness Score (Step 6)
 - **Organizational Capacity** (30%) — AI talent, leadership, change readiness
 - **Data Availability & Quality** (30%) — System integration, data governance
 - **Technical Infrastructure** (20%) — Cloud/API readiness
@@ -49,8 +49,8 @@
 - All equal values → 5.5
 
 ### Priority Score (Step 7)
-- Formula: `(Feasibility × 0.5) + (Normalized Value × 0.5)`
-- Tiers: Champions (≥7.5), Quick Wins (value<5.5 & feasibility≥5.5), Strategic (value≥5.5 & feasibility<5.5), Foundation (<5.0)
+- Formula: `(Readiness × 0.5) + (Normalized Value × 0.5)`
+- Tiers: Champions (≥7.5), Quick Wins (value<5.5 & readiness≥5.5), Strategic (value≥5.5 & readiness<5.5), Foundation (<5.0)
 
 ### TTV Bubble Sizing
 - Score: `1 - MIN(TTV/12, 1)` — shorter TTV = larger bubble

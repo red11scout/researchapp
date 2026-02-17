@@ -96,7 +96,7 @@ function getComplexityLabel(score: number): string {
 }
 
 // ============================================================================
-// VALUE-FEASIBILITY MATRIX: New scoring system (1-10 scale)
+// VALUE-READINESS MATRIX: New scoring system (1-10 scale)
 // ============================================================================
 
 // Normalize annual values to 1-10 scale using min-max normalization
@@ -109,10 +109,10 @@ function normalizeValuesToScale(values: number[]): number[] {
 }
 
 // Get quadrant type based on new thresholds (5.5 midpoint on 1-10 scale)
-function getQuadrantType(normalizedValue: number, feasibilityScore: number): string {
-  if (normalizedValue >= 5.5 && feasibilityScore >= 5.5) return "Champion";
-  if (normalizedValue >= 5.5 && feasibilityScore < 5.5) return "Strategic";
-  if (normalizedValue < 5.5 && feasibilityScore >= 5.5) return "Quick Win";
+function getQuadrantType(normalizedValue: number, readinessScore: number): string {
+  if (normalizedValue >= 5.5 && readinessScore >= 5.5) return "Champion";
+  if (normalizedValue >= 5.5 && readinessScore < 5.5) return "Strategic";
+  if (normalizedValue < 5.5 && readinessScore >= 5.5) return "Quick Win";
   return "Foundation";
 }
 
@@ -275,7 +275,7 @@ function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: 
   function?: string;
   description?: string;
   tags: string[];
-  feasibilityScore?: number;
+  readinessScore?: number;
   timeToValue?: number;
   monthlyTokens?: number;
   organizationalCapacity?: number;
@@ -290,7 +290,7 @@ function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: 
 } {
   const result: {
     function?: string; description?: string; tags: string[];
-    feasibilityScore?: number; timeToValue?: number; monthlyTokens?: number;
+    readinessScore?: number; timeToValue?: number; monthlyTokens?: number;
     organizationalCapacity?: number; dataAvailabilityQuality?: number;
     technicalInfrastructure?: number; governance?: number;
     effortScore?: number; dataReadiness?: number; integrationComplexity?: number; changeMgmt?: number;
@@ -317,7 +317,7 @@ function extractUseCaseDetails(steps: ReportAnalysisData['steps'], useCaseName: 
     );
     if (effort) {
       // New 4-component system (1-10 scale)
-      result.feasibilityScore = effort["Feasibility Score"] || effort.feasibilityScore;
+      result.readinessScore = effort["Readiness Score"] || effort["Feasibility Score"] || effort.feasibilityScore;
       result.organizationalCapacity = effort["Organizational Capacity"];
       result.dataAvailabilityQuality = effort["Data Availability & Quality"];
       result.technicalInfrastructure = effort["Technical Infrastructure"];
@@ -438,7 +438,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
   // NEW: Generate structured Value Driver insights
   const insights = generateValueInsights(dashboard);
 
-  // NEW: Value-Feasibility Matrix (1-10 scale, min-max normalization)
+  // NEW: Value-Readiness Matrix (1-10 scale, min-max normalization)
   // Fallback: if topUseCases is incomplete (fewer entries than step 5 data),
   // build the use case source from step 5/6 data directly.
   const step5DataFull = analysis.steps.find(s => s.step === 5)?.data as any[] | undefined;
@@ -464,15 +464,15 @@ export function mapReportToDashboardData(report: Report): DashboardData {
     const annualValues = useCaseSource.map(uc => uc.annualValue || 0);
     const normalizedValues = normalizeValuesToScale(annualValues);
 
-    // Step 2: Read feasibility scores from Step 7 data (already computed by postprocessor)
+    // Step 2: Read readiness scores from Step 7 data (already computed by postprocessor)
     const step7Data = analysis.steps.find(s => s.step === 7)?.data;
 
     useCaseSource.forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
       const normalizedValue = normalizedValues[idx] ?? 5.5;
 
-      // Get feasibility score: prefer Step 7 data (computed by postprocessor), then Step 6 details
-      let feasibilityScore = details.feasibilityScore ?? 5;
+      // Get readiness score: prefer Step 7 data (computed by postprocessor), then Step 6 details
+      let readinessScore = details.readinessScore ?? 5;
       let priorityTier = "Foundation";
 
       if (step7Data && Array.isArray(step7Data)) {
@@ -480,17 +480,17 @@ export function mapReportToDashboardData(report: Report): DashboardData {
           r["Use Case"] === uc.useCase || r.useCase === uc.useCase
         );
         if (step7Record) {
-          feasibilityScore = step7Record["Feasibility Score"] ?? feasibilityScore;
+          readinessScore = step7Record["Readiness Score"] ?? step7Record["Feasibility Score"] ?? readinessScore;
           priorityTier = step7Record["Priority Tier"] ?? priorityTier;
         }
       }
 
-      const type = getQuadrantType(normalizedValue, feasibilityScore);
+      const type = getQuadrantType(normalizedValue, readinessScore);
       const ttvScore = calculateTTVBubbleScore(details.timeToValue || 6);
 
       matrixData.push({
         name: uc.useCase,
-        x: feasibilityScore,       // X-axis: Feasibility Score (1-10)
+        x: readinessScore,          // X-axis: Readiness Score (1-10)
         y: normalizedValue,         // Y-axis: Normalized Annual Value (1-10)
         z: ttvScore,                // Bubble size: TTV score (0-1, higher = faster)
         type,
@@ -500,7 +500,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
         priorityTier,
         priorityScore: uc.priorityScore || 0,
         annualValue: uc.annualValue || 0,
-        feasibilityScore,
+        readinessScore,
         normalizedValue,
         organizationalCapacity: details.organizationalCapacity,
         dataAvailabilityQuality: details.dataAvailabilityQuality,
@@ -575,8 +575,8 @@ export function mapReportToDashboardData(report: Report): DashboardData {
       insights,
     },
     priorityMatrix: {
-      title: "Value-Feasibility Matrix",
-      description: "Initiatives mapped by Normalized Annual Value vs. Feasibility Score.\nBubble size indicates Time-to-Value (larger = faster time-to-value).",
+      title: "Value-Readiness Matrix",
+      description: "Initiatives mapped by Normalized Annual Value vs. Readiness Score.\nBubble size indicates Time-to-Value (larger = faster time-to-value).",
       data: matrixData
     },
     useCases: {

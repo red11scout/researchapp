@@ -561,8 +561,8 @@ CRITICAL - Each formula string MUST show the calculation with × symbols:
 - "Risk Formula": Example: "15% reduction × $6M exposure × 0.80 × 0.75 = $540K"
 NOTE: Do NOT repeat the result after an arrow (→). Show only: "formula = $result". Not "formula = $result → $result".
 
-STEP 6: FEASIBILITY & TOKEN MODELING
-Score each use case on FOUR feasibility components (1-10 scale each):
+STEP 6: READINESS & TOKEN MODELING
+Score each use case on FOUR readiness components (1-10 scale each):
 1. Organizational Capacity (weight: 30%) — Leadership AI champions, AI/ML talent, change-ready culture, prior successful tech transformations. 8-10: Active AI hiring, leadership champions. 5-7: Some talent, moderate change capability. 1-4: No AI roles, leadership skepticism.
 2. Data Availability & Quality (weight: 30%) — Modern ERP/CRM, integrated clean data, data governance. 8-10: Modern systems, integrated clean data, governance established. 5-7: Partial integration, mixed quality. 1-4: Legacy silos, quality issues.
 3. Technical Infrastructure (weight: 20%) — Cloud/API readiness, biased toward on-premises reality. 8-10: Cloud-native, API-first, DevOps. 5-7: Partial cloud, some APIs. 1-4: On-premises legacy, no APIs.
@@ -574,14 +574,14 @@ Score each use case on FOUR feasibility components (1-10 scale each):
 - REQUIRED FIELD: Time-to-Value (months) is MANDATORY for every use case. Cannot be empty or null.
 Table columns: ID, Use Case, Organizational Capacity, Data Availability & Quality, Technical Infrastructure, Governance, Monthly Tokens, Runs/Month, Input Tokens/Run, Output Tokens/Run, Annual Token Cost ($), Time-to-Value (months) [REQUIRED], Strategic Theme
 (Use $3 per 1M input tokens, $15 per 1M output tokens for Claude pricing)
-NOTE: The postprocessor computes: Feasibility Score = (OrgCapacity × 0.30) + (DataQuality × 0.30) + (TechInfra × 0.20) + (Governance × 0.20). Do NOT compute this yourself.
+NOTE: The postprocessor computes: Readiness Score = (OrgCapacity × 0.30) + (DataQuality × 0.30) + (TechInfra × 0.20) + (Governance × 0.20). Do NOT compute this yourself.
 
 STEP 7: PRIORITY SCORING & ROADMAP
 The postprocessor computes all priority scores deterministically. Generate placeholder values that will be overwritten:
-- Priority Score: (Feasibility × 0.5) + (Normalized Value × 0.5), both on 1-10 scale
-- Tiers: Champions (≥7.5), Quick Wins (value<5.5 & feasibility≥5.5), Strategic (value≥5.5 & feasibility<5.5), Foundation (<5.0)
+- Priority Score: (Readiness × 0.5) + (Normalized Value × 0.5), both on 1-10 scale
+- Tiers: Champions (≥7.5), Quick Wins (value<5.5 & readiness≥5.5), Strategic (value≥5.5 & readiness<5.5), Foundation (<5.0)
 - Each use case must include a "Strategic Theme" column linking to Step 1
-Table columns: ID, Use Case, Priority Tier, Recommended Phase (Q1/Q2/Q3/Q4), Priority Score, Feasibility Score, Value Score, TTV Score, Strategic Theme
+Table columns: ID, Use Case, Priority Tier, Recommended Phase (Q1/Q2/Q3/Q4), Priority Score, Readiness Score, Value Score, TTV Score, Strategic Theme
 </output_methodology>
 
 <quality_gates>
@@ -657,8 +657,8 @@ JSON structure:
     {"step": 3, "title": "Friction Point Mapping", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "Friction Point": "...", "Severity": "Critical/High/Medium", "Primary Driver Impact": "...", "Estimated Annual Cost ($)": "..."}]},
     {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "..."}]},
     {"step": 5, "title": "Benefits Quantification by Driver", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Revenue Benefit ($)": "...", "Revenue Formula": "...", "Cost Benefit ($)": "...", "Cost Formula": "...", "Cash Flow Benefit ($)": "...", "Cash Flow Formula": "...", "Risk Benefit ($)": "...", "Risk Formula": "...", "Total Annual Value ($)": "...", "Probability of Success": 0.75}]},
-    {"step": 6, "title": "Feasibility & Token Modeling", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Organizational Capacity": 7, "Data Availability & Quality": 6, "Technical Infrastructure": 5, "Governance": 4, "Time-to-Value (months)": 6, "Input Tokens/Run": 800, "Output Tokens/Run": 800, "Runs/Month": 1000, "Monthly Tokens": 1600000, "Annual Token Cost ($)": "$..."}]},
-    {"step": 7, "title": "Priority Scoring & Roadmap", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Priority Tier": "Champions", "Recommended Phase": "Q1", "Priority Score": 7.8, "Feasibility Score": 5.5, "Value Score": 10.0, "TTV Score": 0.5}]}
+    {"step": 6, "title": "Readiness & Token Modeling", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Organizational Capacity": 7, "Data Availability & Quality": 6, "Technical Infrastructure": 5, "Governance": 4, "Time-to-Value (months)": 6, "Input Tokens/Run": 800, "Output Tokens/Run": 800, "Runs/Month": 1000, "Monthly Tokens": 1600000, "Annual Token Cost ($)": "$..."}]},
+    {"step": 7, "title": "Priority Scoring & Roadmap", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Priority Tier": "Champions", "Recommended Phase": "Q1", "Priority Score": 7.8, "Readiness Score": 5.5, "Value Score": 10.0, "TTV Score": 0.5}]}
   ],
   "summary": "Plain text fallback summary (250-350 words). First sentence states the recommendation with total value. Use the executiveSummary object for the primary structured output.",
   "executiveSummary": {
@@ -900,8 +900,8 @@ export async function generateWhatIfSuggestion(
     3: "Friction Point Mapping - Generate friction point records with Function, Sub-Function, Friction Point description, Severity, Estimated Annual Cost, and Primary Driver Impact",
     4: "AI Use Case Generation - Generate AI use case records with ID, Function, Sub-Function, Use Case Name, Description, AI Primitives, and Target Friction",
     5: "Benefits Quantification - Generate benefit records with ID, Use Case, Revenue Benefit (e.g. $2.5M), Revenue Formula (explanation of calculation), Cost Benefit, Cost Formula, Cash Flow Benefit, Cash Flow Formula, Risk Benefit, Risk Formula, Total Annual Value (sum of all benefits), and Probability of Success (percentage 1-100). Use realistic conservative estimates with $K or $M notation.",
-    6: "Feasibility & Token Modeling - Generate feasibility records with ID, Use Case, Organizational Capacity (1-10), Data Availability & Quality (1-10), Technical Infrastructure (1-10), Governance (1-10), Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost, and Time-to-Value (months)",
-    7: "Priority Scoring & Roadmap - Generate priority records with ID, Use Case, Priority Tier (Champions/Quick Wins/Strategic/Foundation), Recommended Phase, Priority Score, Feasibility Score, Value Score, TTV Score"
+    6: "Readiness & Token Modeling - Generate readiness records with ID, Use Case, Organizational Capacity (1-10), Data Availability & Quality (1-10), Technical Infrastructure (1-10), Governance (1-10), Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost, and Time-to-Value (months)",
+    7: "Priority Scoring & Roadmap - Generate priority records with ID, Use Case, Priority Tier (Champions/Quick Wins/Strategic/Foundation), Recommended Phase, Priority Score, Readiness Score, Value Score, TTV Score"
   };
 
   const systemPrompt = `You are an AI assistant helping users create What-If scenarios for enterprise AI assessments. 

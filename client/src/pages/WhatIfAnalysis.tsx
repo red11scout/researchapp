@@ -138,7 +138,7 @@ const STEP_FIELD_DEFINITIONS: Record<number, { key: string; label: string; type:
     { key: "Data Readiness", label: "Data Readiness (1-5)", type: "number" },
     { key: "Integration Complexity", label: "Integration Complexity (1-5)", type: "number" },
     { key: "Change Mgmt", label: "Change Mgmt (1-5)", type: "number" },
-    { key: "Effort Score", label: "Effort Score", type: "number" },
+    { key: "Readiness Score", label: "Readiness Score", type: "number" },
     { key: "Time-to-Value (months)", label: "Time-to-Value (months)", type: "number" },
   ],
   7: [
@@ -146,7 +146,7 @@ const STEP_FIELD_DEFINITIONS: Record<number, { key: string; label: string; type:
     { key: "Use Case", label: "Use Case", type: "text" },
     { key: "Value Score", label: "Value Score", type: "number" },
     { key: "TTV Score", label: "TTV Score", type: "number" },
-    { key: "Effort Score", label: "Effort Score", type: "number" },
+    { key: "Readiness Score", label: "Readiness Score", type: "number" },
     { key: "Priority Score", label: "Priority Score", type: "number" },
     { key: "Priority Tier", label: "Priority Tier", type: "select", options: ["Critical", "High", "Medium", "Low"] },
     { key: "Recommended Phase", label: "Recommended Phase", type: "select", options: ["Q1", "Q2", "Q3", "Q4"] },
@@ -163,7 +163,7 @@ const CALCULATED_FIELDS: Record<string, { fieldKey: string; fieldLabel: string; 
   "Priority Score": { fieldKey: "priorityScore", fieldLabel: "Priority Score", step: 7 },
   "Value Score": { fieldKey: "valueScore", fieldLabel: "Value Score", step: 7 },
   "TTV Score": { fieldKey: "ttvScore", fieldLabel: "TTV Score", step: 7 },
-  "Effort Score": { fieldKey: "effortScore", fieldLabel: "Effort Score", step: 7 },
+  "Readiness Score": { fieldKey: "readinessScore", fieldLabel: "Readiness Score", step: 7 },
   "Annual Token Cost ($)": { fieldKey: "annualTokenCost", fieldLabel: "Annual Token Cost", step: 6 },
 };
 
@@ -316,7 +316,7 @@ export default function WhatIfAnalysis() {
       const ttv = parseFloat(step6Record["Time-to-Value (months)"]) || 6;
       const ttvScore = Math.max(0, 100 - (ttv * 10));
       
-      const effortScore = parseFloat(step6Record["Effort Score"]) || 50;
+      const effortScore = parseFloat(step6Record["Readiness Score"] || step6Record["Effort Score"]) || 50;
       const priorityScore = Math.round((valueScore * 0.4) + (ttvScore * 0.3) + ((100 - effortScore) * 0.3));
       
       let priorityTier = "Low";
@@ -335,7 +335,7 @@ export default function WhatIfAnalysis() {
         "Use Case": record["Use Case"] || "",
         "Value Score": valueScore,
         "TTV Score": ttvScore,
-        "Effort Score": effortScore,
+        "Readiness Score": effortScore,
         "Priority Score": priorityScore,
         "Priority Tier": priorityTier,
         "Recommended Phase": recommendedPhase,
@@ -769,7 +769,7 @@ export default function WhatIfAnalysis() {
                         {step === 3 && "Identify friction points and their estimated annual cost impact."}
                         {step === 4 && "Define AI use cases with primitives and target frictions."}
                         {step === 5 && "Quantify benefits across the 4 business drivers: Revenue, Cost, Cash Flow, and Risk."}
-                        {step === 6 && "Model token usage, effort scores, and time-to-value."}
+                        {step === 6 && "Model token usage, readiness scores, and time-to-value."}
                         {step === 7 && "Set priority scores and recommended implementation phases."}
                       </CardDescription>
                     </div>
