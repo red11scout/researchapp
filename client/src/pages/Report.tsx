@@ -3718,10 +3718,20 @@ function StepCard({ step }: { step: any }) {
           // Use column ordering for friction step
           const frictionReordered = reorderAndFilterColumns(step.data, 3);
           const frictionVisibleCols = frictionReordered.length > 0
-            ? Object.keys(frictionReordered[0]).filter((k: string) => !k.includes('Formula') && k !== 'Annual Hours' && k !== 'Hourly Rate' && k !== 'Strategic Theme')
+            ? Object.keys(frictionReordered[0]).filter((k: string) => !k.includes('Formula') && k !== 'Annual Hours' && k !== 'Hourly Rate' && k !== 'Strategic Theme' && !k.startsWith('_'))
             : [];
-          return (
-          <div className="rounded-md border overflow-hidden">
+
+          // Build a map from reordered row back to original flat index
+          const rowToOriginalIndex = new Map<any, number>();
+          frictionReordered.forEach((row: any, i: number) => { rowToOriginalIndex.set(row, i); });
+
+          // Group friction points by Strategic Theme (same pattern as Business Functions)
+          const hasStrategicThemes = frictionReordered.some((r: any) => r['Strategic Theme']);
+          const themeGroups = hasStrategicThemes ? groupByStrategicTheme(frictionReordered) : null;
+          const themeNames = themeGroups ? Array.from(themeGroups.keys()) : [];
+
+          // Render a friction table for a subset of rows
+          const renderFrictionTable = (rows: any[]) => (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -3733,18 +3743,18 @@ function StepCard({ step }: { step: any }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {frictionReordered.map((row: any, i: number) => {
-                    const isExpanded = expandedRows.has(i);
+                  {rows.map((row: any, localIdx: number) => {
+                    const globalIdx = rowToOriginalIndex.get(row) ?? localIdx;
+                    const isExpanded = expandedRows.has(globalIdx);
                     const colCount = frictionVisibleCols.length + 1;
                     const severityColors = getSeverityColor(row['Severity']);
-                    // Get the original row for formula/hours data
-                    const originalRow = step.data[i];
+                    const originalRow = step.data[globalIdx];
 
                     return (
-                      <React.Fragment key={i}>
+                      <React.Fragment key={globalIdx}>
                         <TableRow
                           className="hover:bg-muted/20 transition-colors cursor-pointer"
-                          onClick={() => toggleRow(i)}
+                          onClick={() => toggleRow(globalIdx)}
                         >
                           <TableCell className="w-6 md:w-8 p-1 md:p-2">
                             <div className="flex items-center justify-center">
@@ -3761,6 +3771,12 @@ function StepCard({ step }: { step: any }) {
                                 <Badge className={`${severityColors.bg} ${severityColors.text} ${severityColors.border} border text-[10px] md:text-xs`}>
                                   {row[key] || 'Low'}
                                 </Badge>
+                              ) : key === 'Friction Type' ? (
+                                row[key] ? (
+                                  <Badge variant="outline" className="text-[10px] md:text-xs font-normal whitespace-nowrap">
+                                    {row[key]}
+                                  </Badge>
+                                ) : null
                               ) : (
                                 renderCellValue(key, row[key])
                               )}
@@ -3818,7 +3834,36 @@ function StepCard({ step }: { step: any }) {
                 </TableBody>
               </Table>
             </div>
-          </div>);
+          );
+
+          return themeGroups && themeNames.length > 1 ? (
+            <Accordion type="multiple" defaultValue={themeNames} className="space-y-2">
+              {themeNames.map((themeName, themeIdx) => {
+                const themeRows = themeGroups.get(themeName) || [];
+                const themeColor = getThemeColor(themeIdx);
+                return (
+                  <AccordionItem key={themeName} value={themeName} className={`border rounded-lg ${themeColor.border}`}>
+                    <AccordionTrigger className={`px-3 py-2 text-sm font-semibold ${themeColor.text} ${themeColor.bg} rounded-t-lg hover:no-underline`}>
+                      <div className="flex items-center gap-2">
+                        <Target className="h-4 w-4" />
+                        <span>{themeName}</span>
+                        <Badge variant="outline" className={`ml-2 text-[10px] ${themeColor.badge}`}>
+                          {themeRows.length} {themeRows.length === 1 ? 'item' : 'items'}
+                        </Badge>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="p-0">
+                      {renderFrictionTable(themeRows)}
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
+          ) : (
+            <div className="rounded-md border overflow-hidden">
+              {renderFrictionTable(frictionReordered)}
+            </div>
+          );
         })()
         : hasData ? (() => {
           // ===== GENERIC TABLE WITH COLUMN REORDERING + BENCHMARK COLORS + STRATEGIC THEME GROUPING =====

@@ -642,6 +642,7 @@ export const STEP_COLUMN_ORDER: Record<number, string[]> = {
   ],
   3: [ // Friction Point Mapping
     "Friction Point",
+    "Friction Type",
     "Function",
     "Sub-Function",
     "Estimated Annual Cost ($)",
