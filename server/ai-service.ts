@@ -514,9 +514,14 @@ STEP 3: FRICTION POINT MAPPING
 - Rate severity: Critical/High/Medium
 - Each friction point must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
 - FUNCTION/SUB-FUNCTION CONSTRAINT: Use the SAME standardized Function and Sub-Function labels as Step 2. The Function/Sub-Function for a friction point MUST correspond to a Function/Sub-Function that has a KPI in Step 2.
+- FRICTION TYPE CLASSIFICATION: Classify each friction point into exactly one "Friction Type" category. MUST be one of these exact labels:
+  * "Process Friction" — Manual steps, handoffs, approval bottlenecks, redundant workflows
+  * "Data Friction" — Quality issues, availability gaps, data silos, inconsistent formats
+  * "Technology Friction" — Legacy systems, integration gaps, tool limitations, scalability constraints
+  * "Knowledge Friction" — Expertise gaps, training needs, institutional knowledge loss, documentation debt
 - STANDARDIZED ROLES REQUIREMENT: For each friction point, assign the most appropriate role from the standardized roles list provided below. Use the exact role name (capitalization and format must match EXACTLY). Use the corresponding loaded hourly rate from the standardized table.
 ${getStandardizedRolesPromptText()}
-Table columns: Friction Point, Function, Sub-Function, Estimated Annual Cost ($), Severity (Critical/High/Medium), Primary Driver Impact, Strategic Theme
+Table columns: Friction Point, Friction Type, Function, Sub-Function, Estimated Annual Cost ($), Severity (Critical/High/Medium), Primary Driver Impact, Strategic Theme
 
 STEP 4: AI USE CASE GENERATION
 Generate EXACTLY 10 use cases that:
@@ -528,7 +533,22 @@ Generate EXACTLY 10 use cases that:
 ✓ Prioritize back-office over customer-facing
 ✓ Each use case must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
 ✓ FUNCTION/SUB-FUNCTION CONSTRAINT: Use the SAME standardized Function and Sub-Function labels as Steps 2 and 3. The Function/Sub-Function for a use case MUST match the friction point it targets.
-Table columns: ID, Use Case Name, Description, Target Friction, AI Primitives, Human-in-the-Loop Checkpoint, Function, Sub-Function, Strategic Theme
+✓ AGENTIC PATTERN: Select the single most appropriate agentic pattern for each use case from these 10 options (use the exact ID string):
+  * "reflection" — Self-critique loop for iterative quality improvement
+  * "tool_use" — LLM + external tool invocation (APIs, databases, search)
+  * "planning" — Task decomposition with explicit sub-task ordering
+  * "multi_agent" — Multiple specialized agents under coordination
+  * "react" — Reason + Act loop with adaptive exploration
+  * "orchestrator_worker" — Central manager delegates to specialist workers
+  * "agent_handoff" — Decentralized delegation between specialists
+  * "parallelization" — Concurrent independent sub-tasks with synthesis
+  * "group_chat" — Multi-agent deliberation and debate
+  * "generator_critic" — Generator + reviewer two-agent quality loop
+✓ PATTERN RATIONALE: Provide a 2-3 sentence explanation for why the selected agentic pattern is the best fit for this use case
+✓ DESIRED OUTCOMES: List 3-5 specific, measurable business outcomes expected (as a JSON array of strings)
+✓ DATA TYPES: List the types of data this use case processes (as a JSON array). Use ONLY these labels: "Structured", "Semi-structured", "Unstructured", "Real-time"
+✓ INTEGRATIONS: List 2-5 specific enterprise systems/tools that need integration (as a JSON array, e.g., ["Salesforce CRM", "SAP ERP", "Slack"])
+Table columns: ID, Use Case Name, Description, Target Friction, AI Primitives, Agentic Pattern, Pattern Rationale, Human-in-the-Loop Checkpoint, Function, Sub-Function, Strategic Theme, Desired Outcomes, Data Types, Integrations
 
 STEP 5: BENEFITS QUANTIFICATION BY DRIVER
 ALL 4 benefit types MUST use these EXACT standardized variable structures:
@@ -654,8 +674,8 @@ JSON structure:
     {"step": 0, "title": "Company Overview", "content": "Brief 2-3 sentence company overview. The structured companyOverview object contains authoritative company data: position, friction table, data readiness, and why now sections.", "data": null},
     {"step": 1, "title": "Strategic Anchoring & Business Drivers", "content": "brief intro", "data": [{"Strategic Theme": "...", "Primary Driver Impact": "...", "Secondary Driver": "...", "Current State": "...", "Target State": "..."}]},
     {"step": 2, "title": "Business Function Inventory & KPI Baselines", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "KPI Name": "...", "Baseline Value": "...", "Industry Benchmark": "...", "Target Value": "...", "Direction": "↑/↓", "Timeframe": "...", "Measurement Method": "..."}]},
-    {"step": 3, "title": "Friction Point Mapping", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "Friction Point": "...", "Severity": "Critical/High/Medium", "Primary Driver Impact": "...", "Estimated Annual Cost ($)": "..."}]},
-    {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "..."}]},
+    {"step": 3, "title": "Friction Point Mapping", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "Friction Point": "...", "Friction Type": "Process Friction|Data Friction|Technology Friction|Knowledge Friction", "Severity": "Critical/High/Medium", "Primary Driver Impact": "...", "Estimated Annual Cost ($)": "...", "Strategic Theme": "..."}]},
+    {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Agentic Pattern": "tool_use", "Pattern Rationale": "2-3 sentences explaining pattern choice", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "...", "Strategic Theme": "...", "Desired Outcomes": ["Outcome 1", "Outcome 2", "Outcome 3"], "Data Types": ["Structured", "Unstructured"], "Integrations": ["System 1", "System 2"]}]},
     {"step": 5, "title": "Benefits Quantification by Driver", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Revenue Benefit ($)": "...", "Revenue Formula": "...", "Cost Benefit ($)": "...", "Cost Formula": "...", "Cash Flow Benefit ($)": "...", "Cash Flow Formula": "...", "Risk Benefit ($)": "...", "Risk Formula": "...", "Total Annual Value ($)": "...", "Probability of Success": 0.75}]},
     {"step": 6, "title": "Readiness & Token Modeling", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Organizational Capacity": 7, "Data Availability & Quality": 6, "Technical Infrastructure": 5, "Governance": 4, "Time-to-Value (months)": 6, "Input Tokens/Run": 800, "Output Tokens/Run": 800, "Runs/Month": 1000, "Monthly Tokens": 1600000, "Annual Token Cost ($)": "$..."}]},
     {"step": 7, "title": "Priority Scoring & Roadmap", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Priority Tier": "Champions", "Recommended Phase": "Q1", "Priority Score": 7.8, "Readiness Score": 5.5, "Value Score": 10.0, "TTV Score": 0.5}]}
