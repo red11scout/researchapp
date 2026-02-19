@@ -110,6 +110,10 @@ export const ROUNDING = {
   TOKEN_DECIMALS: 2,            // Token costs: 2 decimal places
 } as const;
 
+/**
+ * @deprecated Use calculateNewPriorityScore() instead.
+ * Legacy 5-criterion priority weights on a 0-100 scale.
+ */
 export const PRIORITY_WEIGHTS = {
   strategicAlignment: 0.25,
   financialImpact: 0.25,
@@ -118,6 +122,10 @@ export const PRIORITY_WEIGHTS = {
   timeToValue: 0.15,
 } as const;
 
+/**
+ * @deprecated Use NEW_PRIORITY_TIERS and getNewPriorityTier() instead.
+ * Legacy 4-tier system with 80/60/40 thresholds on a 0-100 scale.
+ */
 export const PRIORITY_TIERS = {
   TIER_1: { min: 80, label: 'Tier 1 — Quick Win' },
   TIER_2: { min: 60, label: 'Tier 2 — Strategic' },
@@ -697,7 +705,8 @@ export function calculateValuePerMillionTokens(inputs: {
 // ============================================================================
 
 /**
- * Priority Score Calculation — 5-Criterion Matrix
+ * @deprecated Use calculateNewPriorityScore() instead.
+ * Legacy 5-Criterion Priority Score on a 0-100 scale.
  *
  * WEIGHTS:
  *   Strategic Alignment: 25%
@@ -782,7 +791,8 @@ export function calculatePriorityScore(inputs: {
 }
 
 /**
- * Priority Tier Assignment — 4-tier system
+ * @deprecated Use getNewPriorityTier() instead.
+ * Legacy 4-tier assignment using 80/60/40 thresholds on a 0-100 scale.
  */
 export function getPriorityTier(priorityScore: number): string {
   if (priorityScore >= PRIORITY_TIERS.TIER_1.min) return PRIORITY_TIERS.TIER_1.label;
@@ -791,6 +801,10 @@ export function getPriorityTier(priorityScore: number): string {
   return PRIORITY_TIERS.TIER_4.label;
 }
 
+/**
+ * @deprecated Use getNewRecommendedPhase() instead.
+ * Legacy phase recommendation using 80/60/40 thresholds and TTV months.
+ */
 export function getRecommendedPhase(priorityScore: number, timeToValueMonths: number): string {
   if (priorityScore >= 80 && timeToValueMonths <= 6) return 'Q1';
   if (priorityScore >= 60 && timeToValueMonths <= 9) return 'Q2';
