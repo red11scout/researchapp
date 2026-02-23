@@ -30,9 +30,9 @@ const METHODOLOGY_ITEMS: MethodologyItem[] = [
     description: "Organizational data quality and accessibility scaled from Level 1 (ad-hoc, 0.60) to Level 5 (optimizing, 1.00). Most organizations assess at Level 2 (0.75). Derived from data governance maturity, system integration level, and data quality metrics.",
   },
   {
-    title: "Value Normalization",
+    title: "Value Score",
     range: "1–10",
-    description: "Min-max normalization across all use cases: Score = 1 + ((Value - Min) / (Max - Min)) × 9. Ensures relative comparison is deterministic and scales dynamically with report data.",
+    description: "Expected Value (Total Annual Value × Probability of Success) divided by Friction Annual Cost, then min-max normalized across all use cases to 1–10. Directly ties use case value to the friction cost it addresses, providing a deterministic measure of return on friction investment.",
   },
   {
     title: "Readiness Score",

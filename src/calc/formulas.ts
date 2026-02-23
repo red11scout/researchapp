@@ -1247,6 +1247,32 @@ export function normalizeValueToScale(value: number, min: number, max: number): 
 }
 
 // ============================================================================
+// VALUE SCORE FROM FRICTION — Expected Value / Friction Cost, normalized 1-10
+// More deterministic than pure dollar-based min-max normalization.
+// Directly ties use case value to the friction cost it addresses.
+// ============================================================================
+
+/**
+ * Calculate Value Score as (Expected Value / Friction Annual Cost), normalized 1-10.
+ *
+ * @param expectedValue - Total Annual Value × Probability of Success
+ * @param frictionCost - Annual cost of the friction point this use case targets
+ * @param allRatios - Array of EV/friction ratios for ALL use cases in the cohort
+ * @returns Normalized score 1-10 (5.5 if all ratios are equal)
+ */
+export function calculateValueScoreFromFriction(
+  expectedValue: number,
+  frictionCost: number,
+  allRatios: number[],
+): number {
+  const rawRatio = frictionCost > 0 ? expectedValue / frictionCost : 0;
+  const minRatio = Math.min(...allRatios);
+  const maxRatio = Math.max(...allRatios);
+  if (maxRatio === minRatio) return 5.5;
+  return Math.round((1 + ((rawRatio - minRatio) / (maxRatio - minRatio)) * 9) * 100) / 100;
+}
+
+// ============================================================================
 // TTV BUBBLE SIZING — Time to Value score for matrix bubble size
 // ============================================================================
 

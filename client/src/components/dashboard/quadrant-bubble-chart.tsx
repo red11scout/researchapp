@@ -376,7 +376,7 @@ export function QuadrantBubbleChart({ data, onBubbleClick }: QuadrantBubbleChart
           fill="#94a3b8"
           transform={`rotate(-90, 14, ${(MARGIN.top + height - MARGIN.bottom) / 2})`}
         >
-          Normalized Annual Value
+          Value Score (EV / Friction Cost)
         </text>
 
         {/* Axis lines */}

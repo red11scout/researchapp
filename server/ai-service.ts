@@ -92,6 +92,84 @@ function getAnthropicClient(): Anthropic {
   return anthropicClient;
 }
 
+// Progress callback type for streaming updates
+type ProgressCallback = (step: number, message: string, detail?: string) => void;
+
+// Streaming API call that detects step boundaries and fires progress callbacks
+async function callAnthropicAPIStreaming(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number = 16000,
+  onProgress?: ProgressCallback
+): Promise<string> {
+  const config = getConfig();
+
+  if (!config.apiKey) {
+    console.error("[callAnthropicAPIStreaming] No API key configured");
+    throw new Error("Anthropic API key is not configured");
+  }
+
+  try {
+    console.log("[callAnthropicAPIStreaming] Making streaming API request");
+    const client = getAnthropicClient();
+
+    let fullText = "";
+    let lastDetectedStep = -1;
+
+    const stepLabels: Record<number, string> = {
+      0: "Company Overview",
+      1: "Strategic Anchoring",
+      2: "Business Functions & KPIs",
+      3: "Friction Points",
+      4: "AI Use Cases",
+      5: "Benefits Quantification",
+      6: "Readiness & Token Modeling",
+      7: "Priority Roadmap",
+    };
+
+    const stream = client.messages.stream({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    stream.on("text", (text) => {
+      fullText += text;
+
+      // Detect step boundaries by looking for "step": N patterns in the accumulated JSON
+      if (onProgress) {
+        for (let s = lastDetectedStep + 1; s <= 7; s++) {
+          // Look for the step key in the JSON being generated
+          if (fullText.includes(`"step": ${s}`) || fullText.includes(`"step":${s}`)) {
+            lastDetectedStep = s;
+            const label = stepLabels[s] || `Step ${s}`;
+            onProgress(s + 1, `Step ${s}: ${label}`, `Generating ${label.toLowerCase()}...`);
+          }
+        }
+      }
+    });
+
+    const finalMessage = await stream.finalMessage();
+
+    console.log("[callAnthropicAPIStreaming] Stream completed, content length:", fullText.length);
+
+    if (!finalMessage.content || !finalMessage.content[0] || finalMessage.content[0].type !== "text") {
+      console.error("[callAnthropicAPIStreaming] Invalid response format");
+      throw new Error("Invalid response format from Anthropic API");
+    }
+
+    return finalMessage.content[0].text;
+  } catch (error: any) {
+    console.error("[callAnthropicAPIStreaming] Exception caught:", {
+      message: error?.message,
+      name: error?.name,
+      status: error?.status,
+    });
+    throw error;
+  }
+}
+
 // API call using official Anthropic SDK
 async function callAnthropicAPI(systemPrompt: string, userPrompt: string, maxTokens: number = 16000): Promise<string> {
   const config = getConfig();
@@ -235,7 +313,7 @@ export interface AnalysisResult {
   };
 }
 
-export async function generateCompanyAnalysis(companyName: string, documentContext?: string): Promise<AnalysisResult> {
+export async function generateCompanyAnalysis(companyName: string, documentContext?: string, onProgress?: ProgressCallback): Promise<AnalysisResult> {
   const systemPrompt = `<system_identity>
 You are a synthesis of the most brilliant minds in business and AI:
 
@@ -428,7 +506,7 @@ Show explicit calculation for EVERY financial figure with × symbols visible.
 
 <total_benefits_cap>
 CRITICAL GUARDRAIL — REVENUE-RELATIVE CAP:
-Total annual benefits across ALL 10 use cases MUST NOT exceed 50% of the company's annual revenue.
+Total annual benefits across ALL 12 use cases MUST NOT exceed 50% of the company's annual revenue.
 
 If your initial calculations exceed this cap:
 1. Proportionally scale ALL use case benefits downward
@@ -497,7 +575,7 @@ STEP 1: STRATEGIC ANCHORING & BUSINESS DRIVERS
 Table columns: Strategic Theme, Current State, Target State, Primary Driver Impact, Secondary Driver
 
 STEP 2: BUSINESS FUNCTION INVENTORY & KPI BASELINES
-- 10-12 critical functions with KPI baselines
+- EXACTLY 12 critical functions with KPI baselines (one for each of the 12 friction points you will generate in Step 3)
 - Each KPI must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
 - Provide THREE benchmark tiers for each KPI:
   * "Benchmark (Avg)" — Industry average for this KPI among peers
@@ -509,7 +587,7 @@ STEP 2: BUSINESS FUNCTION INVENTORY & KPI BASELINES
 Table columns: KPI Name, Function, Sub-Function, Baseline Value, Direction (↑/↓), Target Value, Benchmark (Avg), Benchmark (Industry Best), Benchmark (Overall Best), Timeframe, Strategic Theme
 
 STEP 3: FRICTION POINT MAPPING
-- 10-12 operational bottlenecks
+- EXACTLY 12 operational bottlenecks (one for each KPI from Step 2, one for each use case in Step 4)
 - Quantify annual cost using fully-loaded labor rates
 - Rate severity: Critical/High/Medium
 - Each friction point must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
@@ -524,31 +602,35 @@ ${getStandardizedRolesPromptText()}
 Table columns: Friction Point, Friction Type, Function, Sub-Function, Estimated Annual Cost ($), Severity (Critical/High/Medium), Primary Driver Impact, Strategic Theme
 
 STEP 4: AI USE CASE GENERATION
-Generate EXACTLY 10 use cases that:
+Generate EXACTLY 12 use cases that:
 ✓ RESHAPE business processes (not just accelerate)
 ✓ Map to 2-3 AI primitives using ONLY the 6 standardized labels: Research & Information Retrieval, Content Creation, Data Analysis, Conversational Interfaces, Workflow Automation, Coding Assistance
-✓ Target specific friction points from Step 3
+✓ CRITICAL 1:1:1 MAPPING CONSTRAINT:
+  - Each Use Case MUST target exactly ONE Friction Point from Step 3 via the "Target Friction" column
+  - Each Friction Point from Step 3 MUST be targeted by exactly ONE Use Case
+  - The "Target Friction" value MUST exactly match a "Friction Point" value from Step 3
+  - No two Use Cases may share the same "Target Friction"
+  - All 12 friction points must be addressed — no gaps
 ✓ Include mandatory Human-in-the-Loop checkpoints
 ✓ Span minimum 5 different business functions
 ✓ Prioritize back-office over customer-facing
 ✓ Each use case must link to one of the 5 Strategic Themes from Step 1 via a "Strategic Theme" column
 ✓ FUNCTION/SUB-FUNCTION CONSTRAINT: Use the SAME standardized Function and Sub-Function labels as Steps 2 and 3. The Function/Sub-Function for a use case MUST match the friction point it targets.
-✓ AGENTIC PATTERN: Select the single most appropriate agentic pattern for each use case from these 10 options (use the exact ID string):
-  * "reflection" — Self-critique loop for iterative quality improvement
-  * "tool_use" — LLM + external tool invocation (APIs, databases, search)
-  * "planning" — Task decomposition with explicit sub-task ordering
-  * "multi_agent" — Multiple specialized agents under coordination
-  * "react" — Reason + Act loop with adaptive exploration
-  * "orchestrator_worker" — Central manager delegates to specialist workers
-  * "agent_handoff" — Decentralized delegation between specialists
-  * "parallelization" — Concurrent independent sub-tasks with synthesis
-  * "group_chat" — Multi-agent deliberation and debate
-  * "generator_critic" — Generator + reviewer two-agent quality loop
-✓ PATTERN RATIONALE: Provide a 2-3 sentence explanation for why the selected agentic pattern is the best fit for this use case
+✓ AGENTIC DESIGN PATTERN: For each use case, recommend a PRIMARY agentic pattern and an ALTERNATIVE pattern.
+  Available patterns (single-agent): Reflection, Tool Use, Planning, ReAct Loop, Prompt Chaining, Semantic Router, Constitutional Guardrail
+  Available patterns (multi-agent): Orchestrator-Workers, Agent Handoff, Parallelization, Generator-Critic, Group Chat
+  For each use case, choose the BEST-FIT primary pattern and a viable alternative. Consider complexity, cost, and time-to-value tradeoffs.
+✓ AGENTIC PATTERN ID: Also provide a lowercase underscore-format ID for the Primary Pattern using this exact mapping:
+  "Reflection" → "reflection", "Tool Use" → "tool_use", "Planning" → "planning", "ReAct Loop" → "react",
+  "Prompt Chaining" → "planning", "Semantic Router" → "planning", "Constitutional Guardrail" → "reflection",
+  "Orchestrator-Workers" → "orchestrator_worker", "Agent Handoff" → "agent_handoff",
+  "Parallelization" → "parallelization", "Generator-Critic" → "generator_critic", "Group Chat" → "group_chat"
+✓ PATTERN RATIONALE: Provide a 2-3 sentence explanation for why the selected primary agentic pattern is the best fit; mention the alternative as a viable option
+✓ E.P.O.C.H. FLAGS: Flag use cases requiring human oversight for Ethical, Political, Operational, Creative, or Human-centric decisions. Provide as a comma-separated list of applicable flags (e.g., "Operational, Human-centric")
 ✓ DESIRED OUTCOMES: List 3-5 specific, measurable business outcomes expected (as a JSON array of strings)
 ✓ DATA TYPES: List the types of data this use case processes (as a JSON array). Use ONLY these labels: "Structured", "Semi-structured", "Unstructured", "Real-time"
 ✓ INTEGRATIONS: List 2-5 specific enterprise systems/tools that need integration (as a JSON array, e.g., ["Salesforce CRM", "SAP ERP", "Slack"])
-Table columns: ID, Use Case Name, Description, Target Friction, AI Primitives, Agentic Pattern, Pattern Rationale, Human-in-the-Loop Checkpoint, Function, Sub-Function, Strategic Theme, Desired Outcomes, Data Types, Integrations
+Table columns: ID, Use Case Name, Description, Target Friction, AI Primitives, Human-in-the-Loop Checkpoint, Function, Sub-Function, Strategic Theme, Primary Pattern, Alternative Pattern, Pattern Rationale, Agentic Pattern, EPOCH Flags, Desired Outcomes, Data Types, Integrations
 
 STEP 5: BENEFITS QUANTIFICATION BY DRIVER
 ALL 4 benefit types MUST use these EXACT standardized variable structures:
@@ -606,9 +688,17 @@ Table columns: ID, Use Case, Priority Tier, Recommended Phase (Q1/Q2/Q3/Q4), Pri
 
 <quality_gates>
 Before output, verify:
-□ Exactly 10 use cases (no more, no less)
-□ All 10 RESHAPE processes (not just accelerate)
-□ All 10 include Human-in-the-Loop checkpoints
+□ Exactly 12 KPIs (no more, no less)
+□ Exactly 12 friction points (no more, no less)
+□ Exactly 12 use cases (no more, no less)
+□ 1:1:1 MAPPING: Each use case's "Target Friction" matches exactly one friction point from Step 3
+□ 1:1:1 MAPPING: No two use cases share the same "Target Friction"
+□ 1:1:1 MAPPING: Every friction point from Step 3 is targeted by exactly one use case
+□ All 12 RESHAPE processes (not just accelerate)
+□ All 12 include Human-in-the-Loop checkpoints
+□ All 12 include Primary Pattern and Alternative Pattern (human-readable names)
+□ All 12 include Agentic Pattern ID (lowercase underscore format)
+□ All 12 include EPOCH Flags (comma-separated list of applicable flags)
 □ Every financial figure has explicit formula with × symbols
 □ Revenue ×0.95, Cost ×0.90, Cash Flow ×0.85, Risk ×0.80 applied
 □ Data maturity adjustment (×0.75) applied
@@ -627,7 +717,7 @@ NEVER:
 • Propose use cases without Human-in-the-Loop
 • Use "potential" benefits without probability weighting
 • Skip showing calculation formulas with × symbols
-• Generate fewer or more than 10 use cases
+• Generate fewer or more than 12 use cases, KPIs, or friction points
 • Use "accelerate" or "speed up" without process transformation
 </forbidden_outputs>
 
@@ -675,7 +765,7 @@ JSON structure:
     {"step": 1, "title": "Strategic Anchoring & Business Drivers", "content": "brief intro", "data": [{"Strategic Theme": "...", "Primary Driver Impact": "...", "Secondary Driver": "...", "Current State": "...", "Target State": "..."}]},
     {"step": 2, "title": "Business Function Inventory & KPI Baselines", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "KPI Name": "...", "Baseline Value": "...", "Industry Benchmark": "...", "Target Value": "...", "Direction": "↑/↓", "Timeframe": "...", "Measurement Method": "..."}]},
     {"step": 3, "title": "Friction Point Mapping", "content": "...", "data": [{"Function": "...", "Sub-Function": "...", "Friction Point": "...", "Friction Type": "Process Friction|Data Friction|Technology Friction|Knowledge Friction", "Severity": "Critical/High/Medium", "Primary Driver Impact": "...", "Estimated Annual Cost ($)": "...", "Strategic Theme": "..."}]},
-    {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Agentic Pattern": "tool_use", "Pattern Rationale": "2-3 sentences explaining pattern choice", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "...", "Strategic Theme": "...", "Desired Outcomes": ["Outcome 1", "Outcome 2", "Outcome 3"], "Data Types": ["Structured", "Unstructured"], "Integrations": ["System 1", "System 2"]}]},
+    {"step": 4, "title": "AI Use Case Generation", "content": "...", "data": [{"ID": "UC-01", "Use Case Name": "...", "Function": "...", "Sub-Function": "...", "AI Primitives": "...", "Primary Pattern": "Tool Use", "Alternative Pattern": "ReAct Loop", "Pattern Rationale": "2-3 sentences explaining pattern choice", "Agentic Pattern": "tool_use", "EPOCH Flags": "Operational, Human-centric", "Description": "...", "Target Friction": "...", "Human-in-the-Loop Checkpoint": "...", "Strategic Theme": "...", "Desired Outcomes": ["Outcome 1", "Outcome 2", "Outcome 3"], "Data Types": ["Structured", "Unstructured"], "Integrations": ["System 1", "System 2"]}]},
     {"step": 5, "title": "Benefits Quantification by Driver", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Revenue Benefit ($)": "...", "Revenue Formula": "...", "Cost Benefit ($)": "...", "Cost Formula": "...", "Cash Flow Benefit ($)": "...", "Cash Flow Formula": "...", "Risk Benefit ($)": "...", "Risk Formula": "...", "Total Annual Value ($)": "...", "Probability of Success": 0.75}]},
     {"step": 6, "title": "Readiness & Token Modeling", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Organizational Capacity": 7, "Data Availability & Quality": 6, "Technical Infrastructure": 5, "Governance": 4, "Time-to-Value (months)": 6, "Input Tokens/Run": 800, "Output Tokens/Run": 800, "Runs/Month": 1000, "Monthly Tokens": 1600000, "Annual Token Cost ($)": "$..."}]},
     {"step": 7, "title": "Priority Scoring & Roadmap", "content": "...", "data": [{"ID": "UC-01", "Use Case": "...", "Priority Tier": "Champions", "Recommended Phase": "Q1", "Priority Score": 7.8, "Readiness Score": 5.5, "Value Score": 10.0, "TTV Score": 0.5}]}
@@ -769,7 +859,8 @@ EXECUTION CHECKLIST:
 ✓ Research the company thoroughly (industry, size, revenue, challenges)
 ${documentContext ? "✓ Incorporate insights from the supplemental documents provided above" : ""}
 ✓ Execute all 8 steps in order
-✓ Generate EXACTLY 10 use cases (no more, no less)
+✓ Generate EXACTLY 12 KPIs, 12 friction points, and 12 use cases (no more, no less)
+✓ 1:1:1 MAPPING: Each use case targets exactly one unique friction point
 ✓ Apply ALL conservative estimation rules:
   - Revenue ×0.95
   - Cost ×0.90
@@ -783,9 +874,10 @@ ${documentContext ? "✓ Incorporate insights from the supplemental documents pr
 ✓ Round timelines UP to nearest month
 
 QUALITY GATES - Verify before output:
-□ Exactly 10 use cases spanning 5+ business functions
-□ All 10 RESHAPE processes (not just accelerate)
-□ All 10 include Human-in-the-Loop checkpoints
+□ Exactly 12 KPIs, 12 friction points, 12 use cases spanning 5+ business functions
+□ 1:1:1 MAPPING: Each use case targets exactly one unique friction point
+□ All 12 RESHAPE processes (not just accelerate)
+□ All 12 include Human-in-the-Loop checkpoints
 □ Every financial figure has explicit formula with × symbols
 □ All reduction factors applied correctly
 □ Summary includes CRITICAL RISK callout
@@ -811,7 +903,7 @@ CRITICAL REQUIREMENT: Your ENTIRE response must be valid JSON - no markdown, no 
     const responseText = await pRetry(
       async () => {
         try {
-          return await callAnthropicAPI(systemPrompt, userPrompt, 16000);
+          return await callAnthropicAPIStreaming(systemPrompt, userPrompt, 16000, onProgress);
         } catch (error: any) {
           console.error(`API call attempt failed:`, error?.message || error);
           
@@ -877,6 +969,9 @@ CRITICAL REQUIREMENT: Your ENTIRE response must be valid JSON - no markdown, no 
       console.log(`Successfully parsed analysis for: ${companyName}`);
       
       // Post-process to ensure all calculations are deterministic and accurate
+      if (onProgress) {
+        onProgress(9, "Applying Formulas", "Running deterministic post-processing...");
+      }
       console.log(`Post-processing analysis to verify calculations...`);
       const correctedAnalysis = postProcessAnalysis(analysis);
       console.log(`Post-processing complete for: ${companyName}`);
@@ -918,7 +1013,7 @@ export async function generateWhatIfSuggestion(
   const stepDescriptions: Record<number, string> = {
     2: "Business Function Inventory & KPI Baselines - Generate KPI records with Function, Sub-Function, KPI Name, Baseline Value, Industry Benchmark, Target Value, Direction, Timeframe, and Measurement Method",
     3: "Friction Point Mapping - Generate friction point records with Function, Sub-Function, Friction Point description, Severity, Estimated Annual Cost, and Primary Driver Impact",
-    4: "AI Use Case Generation - Generate AI use case records with ID, Function, Sub-Function, Use Case Name, Description, AI Primitives, and Target Friction",
+    4: "AI Use Case Generation - Generate AI use case records with ID, Function, Sub-Function, Use Case Name, Description, AI Primitives, Target Friction, Primary Pattern (Reflection/Tool Use/Planning/ReAct Loop/Prompt Chaining/Semantic Router/Constitutional Guardrail/Orchestrator-Workers/Agent Handoff/Parallelization/Generator-Critic/Group Chat), Alternative Pattern, Pattern Rationale, Agentic Pattern (lowercase ID), and EPOCH Flags",
     5: "Benefits Quantification - Generate benefit records with ID, Use Case, Revenue Benefit (e.g. $2.5M), Revenue Formula (explanation of calculation), Cost Benefit, Cost Formula, Cash Flow Benefit, Cash Flow Formula, Risk Benefit, Risk Formula, Total Annual Value (sum of all benefits), and Probability of Success (percentage 1-100). Use realistic conservative estimates with $K or $M notation.",
     6: "Readiness & Token Modeling - Generate readiness records with ID, Use Case, Organizational Capacity (1-10), Data Availability & Quality (1-10), Technical Infrastructure (1-10), Governance (1-10), Runs/Month, Input Tokens/Run, Output Tokens/Run, Monthly Tokens, Annual Token Cost, and Time-to-Value (months)",
     7: "Priority Scoring & Roadmap - Generate priority records with ID, Use Case, Priority Tier (Champions/Quick Wins/Strategic/Foundation), Recommended Phase, Priority Score, Readiness Score, Value Score, TTV Score"

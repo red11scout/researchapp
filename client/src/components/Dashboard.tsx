@@ -9,6 +9,7 @@ import { format } from '@/lib/formatters';
 import { QuadrantBubbleChart } from '@/components/dashboard/quadrant-bubble-chart';
 import { MatrixScorecard } from '@/components/dashboard/matrix-scorecard';
 import { MethodologySection } from '@/components/dashboard/methodology-section';
+import { UseCaseCards } from '@/components/dashboard/use-case-cards';
 
 // Sanitize text to remove markdown artifacts for professional prose display
 function sanitizeForProse(text: string): string {
@@ -147,6 +148,7 @@ interface DashboardData {
     description: string;
     items: UseCase[];
   };
+  useCaseDetails?: any[]; // Raw Step 4 data for detailed card layout
   scenarioComparison?: {
     conservative: { annualBenefit: string; npv: string };
     moderate: { annualBenefit: string; npv: string };
@@ -572,7 +574,7 @@ const UseCaseDetailDrawer = ({ point, onClose }: { point: MatrixDataPoint; onClo
         {/* Score bars */}
         <div className="mb-6">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Scoring Breakdown</p>
-          {scoreBar('Normalized Value', Math.round(point.y * 10) / 10, 10, '#059669')}
+          {scoreBar('Value Score', Math.round(point.y * 10) / 10, 10, '#059669')}
           {scoreBar('Readiness', Math.round(point.x * 10) / 10, 10, '#0339AF')}
           {point.priorityScore != null && point.priorityScore > 0 && scoreBar('Priority Score', Math.round(point.priorityScore * 10) / 10, 10, '#4C73E9')}
           {point.timeToValue != null && scoreBar('Time to Value', point.timeToValue, 24, '#0D9488')}
@@ -1048,7 +1050,19 @@ export default function Dashboard({ data = DEFAULT_DATA, onShareUrl, onDownloadW
       <ExecutiveSummary data={data.executiveSummary} />
       {data.scenarioComparison && <FinancialSensitivityAnalysis data={data.scenarioComparison} />}
       <PriorityMatrix data={data.priorityMatrix} />
-      <UseCaseCarousel data={data.useCases} clientName={data.clientName} />
+      {data.useCaseDetails && data.useCaseDetails.length > 0 ? (
+        <section className="py-16 md:py-28 bg-slate-50">
+          <div className="max-w-[1600px] mx-auto px-4 md:px-6">
+            <div className="mb-6 md:mb-12">
+              <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A]">{data.useCases.title}</h2>
+              <p className="text-gray-600 mt-2 text-sm md:text-base">{sanitizeForProse(data.useCases.description.replace('Synovus', data.clientName))}</p>
+            </div>
+            <UseCaseCards data={data.useCaseDetails} />
+          </div>
+        </section>
+      ) : (
+        <UseCaseCarousel data={data.useCases} clientName={data.clientName} />
+      )}
       {data.frictionByTheme && <FrictionPoints data={data.frictionByTheme} />}
       <MethodologySection />
       <CTASection

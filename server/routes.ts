@@ -769,28 +769,27 @@ Return ONLY valid JSON with this structure:
         startedAt: Date.now()
       });
 
-      // Send progress updates during generation
+      // Send initial progress
       if (sessionId) {
         sendProgress(sessionId, 1, "Step 0: Company Overview", "Gathering company information...");
-        
-        setTimeout(() => sendProgress(sessionId, 2, "Step 1: Strategic Anchoring", "Identifying business drivers..."), 2000);
-        setTimeout(() => sendProgress(sessionId, 3, "Step 2: Business Functions", "Analyzing departments and KPIs..."), 5000);
-        setTimeout(() => sendProgress(sessionId, 4, "Step 3: Friction Points", "Identifying operational bottlenecks..."), 8000);
-        setTimeout(() => sendProgress(sessionId, 5, "Step 4: AI Use Cases", "Generating AI opportunities with 6 primitives..."), 12000);
-        setTimeout(() => sendProgress(sessionId, 6, "Step 5: Benefit Quantification", "Calculating ROI across 4 drivers..."), 16000);
-        setTimeout(() => sendProgress(sessionId, 7, "Step 6: Token Modeling", "Estimating token costs per use case..."), 20000);
-        setTimeout(() => sendProgress(sessionId, 8, "Step 7: Priority Scoring", "Computing weighted priority scores..."), 24000);
       }
 
       // Start background processing and return immediately
       // Use setImmediate to ensure response is sent before processing starts
       setImmediate(async () => {
         try {
-          // Generate new analysis using AI
-          const analysis = await generateCompanyAnalysis(companyName, documentContext);
+          // Build progress callback that sends real-time SSE updates as AI streams
+          const progressCallback = sessionId
+            ? (step: number, message: string, detail?: string) => {
+                sendProgress(sessionId, step, message, detail);
+              }
+            : undefined;
+
+          // Generate new analysis using AI with streaming progress
+          const analysis = await generateCompanyAnalysis(companyName, documentContext, progressCallback);
           
           if (sessionId) {
-            sendProgress(sessionId, 9, "Saving Report", "Storing analysis in database...");
+            sendProgress(sessionId, 10, "Saving Report", "Storing analysis in database...");
           }
 
           // Save to database
@@ -1752,7 +1751,7 @@ Return ONLY valid JSON with this structure:
         
         // Update top use cases based on recalculated priority scores
         if (step7?.data && Array.isArray(step7.data)) {
-          const topUseCases = step7.data.slice(0, 10).map((row: any, index: number) => ({
+          const topUseCases = step7.data.slice(0, 12).map((row: any, index: number) => ({
             rank: index + 1,
             useCase: row['Use Case'],
             annualValue: row['Total Annual Value ($)'] || row['annualValue'],

@@ -46,6 +46,8 @@ import {
 } from "../shared/taxonomy";
 
 import { verifyAndNormalizeRoles, STANDARDIZED_BENEFITS_LOADING } from '../shared/standardizedRoles';
+import { resolvePatternName } from '../shared/schema';
+import { getPatternById } from '../shared/agenticPatterns';
 
 // ============================================================================
 // PER-USE-CASE REVENUE CAP — No single use case can exceed 15% of revenue
@@ -140,6 +142,10 @@ interface Step4Record {
   ID: string;
   "Use Case": string;
   "Target Friction"?: string;
+  "Primary Pattern"?: string;
+  "Alternative Pattern"?: string;
+  "Agentic Pattern"?: string;
+  "EPOCH Flags"?: string;
 }
 
 interface Step5Record {
@@ -1023,6 +1029,64 @@ export function postProcessAnalysis(analysisResult: any): any {
       }
     }
     console.log(`[postProcessAnalysis] Normalized ${step4.data.length} Step 4 Function/Sub-Function/AI Primitives values`);
+
+    // Normalize and enrich agentic pattern fields
+    for (const record of step4.data) {
+      // Resolve Primary Pattern (legacy names → consolidated names)
+      if (record["Primary Pattern"]) {
+        record["Primary Pattern"] = resolvePatternName(record["Primary Pattern"]);
+      } else {
+        // Fallback: derive Primary Pattern from AI Primitives if missing
+        const primitives = (record["AI Primitives"] || "").toLowerCase();
+        if (primitives.includes("retrieval") || primitives.includes("research")) {
+          record["Primary Pattern"] = "Tool Use";
+        } else if (primitives.includes("content creation") || primitives.includes("generation")) {
+          record["Primary Pattern"] = "Generator-Critic";
+        } else if (primitives.includes("analysis") || primitives.includes("data")) {
+          record["Primary Pattern"] = "ReAct Loop";
+        } else if (primitives.includes("automation") || primitives.includes("workflow")) {
+          record["Primary Pattern"] = "Orchestrator-Workers";
+        } else {
+          record["Primary Pattern"] = "Prompt Chaining";
+        }
+      }
+      if (record["Alternative Pattern"]) {
+        record["Alternative Pattern"] = resolvePatternName(record["Alternative Pattern"]);
+      }
+      // Ensure EPOCH Flags field exists
+      if (!record["EPOCH Flags"]) {
+        record["EPOCH Flags"] = "";
+      }
+
+      // Derive Agentic Pattern lowercase ID from Primary Pattern
+      const PATTERN_TO_ID: Record<string, string> = {
+        "Reflection": "reflection",
+        "Tool Use": "tool_use",
+        "Planning": "planning",
+        "ReAct Loop": "react",
+        "Prompt Chaining": "planning",
+        "Semantic Router": "planning",
+        "Constitutional Guardrail": "reflection",
+        "Orchestrator-Workers": "orchestrator_worker",
+        "Agent Handoff": "agent_handoff",
+        "Parallelization": "parallelization",
+        "Generator-Critic": "generator_critic",
+        "Group Chat": "group_chat",
+      };
+      const primaryPattern = record["Primary Pattern"] || "";
+      record["Agentic Pattern"] = PATTERN_TO_ID[primaryPattern] || (record["Agentic Pattern"] || "planning");
+
+      // Add pattern metadata for downstream consumption
+      const patternSlug = primaryPattern.toLowerCase().replace(/\s+/g, '-');
+      const primaryDef = getPatternById(patternSlug);
+      if (primaryDef) {
+        record["_patternType"] = primaryDef.type;
+        record["_patternComplexity"] = primaryDef.complexity;
+        record["_tokenMultiplier"] = primaryDef.tokenMultiplier;
+        record["_implementationMonths"] = primaryDef.implementationMonths;
+      }
+    }
+    console.log(`[postProcessAnalysis] Normalized ${step4.data.length} Step 4 agentic pattern fields`);
   }
 
   // Cross-step verification
@@ -1031,6 +1095,52 @@ export function postProcessAnalysis(analysisResult: any): any {
     if (verification.warnings.length > 0) {
       console.log(`[postProcessAnalysis] Function consistency warnings:`);
       verification.warnings.forEach(w => console.log(`  - ${w}`));
+    }
+  }
+
+  // ============================================
+  // 1:1:1 MAPPING VALIDATION (KPIs → Frictions → Use Cases)
+  // ============================================
+  const mappingWarnings: string[] = [];
+  if (step2?.data && step3?.data && step4?.data) {
+    const kpiCount = (step2.data as any[]).length;
+    const frictionCount = (step3.data as any[]).length;
+    const useCaseCount = (step4.data as any[]).length;
+
+    // Count validation
+    if (kpiCount !== 12 || frictionCount !== 12 || useCaseCount !== 12) {
+      mappingWarnings.push(
+        `[MAPPING] Expected 12:12:12 but got KPIs=${kpiCount}, Frictions=${frictionCount}, UseCases=${useCaseCount}`
+      );
+    }
+
+    // 1:1 friction-to-use-case validation
+    const frictionNames = new Set((step3.data as any[]).map((r: any) => r["Friction Point"]));
+    const targetFrictions = (step4.data as any[]).map((r: any) => r["Target Friction"]);
+    const usedFrictions = new Set<string>();
+
+    for (const tf of targetFrictions) {
+      if (tf && !frictionNames.has(tf)) {
+        mappingWarnings.push(`[MAPPING] Use case targets unknown friction: "${tf?.substring(0, 60)}..."`);
+      }
+      if (tf && usedFrictions.has(tf)) {
+        mappingWarnings.push(`[MAPPING] Duplicate target friction: "${tf?.substring(0, 60)}..."`);
+      }
+      if (tf) usedFrictions.add(tf);
+    }
+
+    const unmappedFrictions = Array.from(frictionNames).filter(f => !usedFrictions.has(f));
+    if (unmappedFrictions.length > 0) {
+      mappingWarnings.push(
+        `[MAPPING] ${unmappedFrictions.length} friction point(s) not targeted by any use case: ${unmappedFrictions.map(f => f?.substring(0, 40)).join(", ")}`
+      );
+    }
+
+    if (mappingWarnings.length > 0) {
+      console.log(`[postProcessAnalysis] 1:1:1 Mapping validation warnings:`);
+      mappingWarnings.forEach(w => console.log(`  - ${w}`));
+    } else {
+      console.log(`[postProcessAnalysis] 1:1:1 Mapping validation PASSED: ${kpiCount}:${frictionCount}:${useCaseCount}`);
     }
   }
 
@@ -1191,7 +1301,7 @@ export function postProcessAnalysis(analysisResult: any): any {
   // ============================================
   // STEP 5: CROSS-VALIDATION & BENEFITS CAP
   // ============================================
-  const validationWarnings: string[] = [...allUseCaseWarnings];
+  const validationWarnings: string[] = [...allUseCaseWarnings, ...mappingWarnings];
   let benefitsCapped = false;
   let capScaleFactor = 1.0;
 
@@ -1422,24 +1532,45 @@ export function postProcessAnalysis(analysisResult: any): any {
   //   Both on 1-10 scale, so Priority is 1-10
   //   Value normalization: min-max across all use cases in this report
   if (step7Active?.data && Array.isArray(step7Active.data) && step6?.data) {
-    // Step 1: Collect all total annual values for min-max normalization
-    const allValues: number[] = [];
-    const valueByUseCase: Record<string, number> = {};
+    // Step 1: Compute EV/friction ratios for friction-based value scoring
+    // Value Score = (Expected Value / Friction Annual Cost), normalized 1-10 via min-max
+    const allRatios: number[] = [];
+    const ratioByUseCase: Record<string, number> = {};
 
     for (const record of step7Active.data as Step7Record[]) {
       const step5Record = correctedStep5Data.find(r => r.ID === record.ID);
+      const step4Record = step4?.data ? (step4.data as any[]).find((r: any) => r.ID === record.ID) : null;
+
+      // Expected Value = Total Annual Value × Probability of Success
       const totalValue = step5Record ? parseNumber(step5Record["Total Annual Value ($)"]) : 0;
-      allValues.push(totalValue);
-      valueByUseCase[record.ID] = totalValue;
+      const probability = step5Record ? parseNumber(step5Record["Probability of Success (0-1)"]) || parseNumber(step5Record["Probability of Success"]) || 0.7 : 0.7;
+      const expectedValue = totalValue * probability;
+
+      // Get friction cost from the friction-to-use-case mapping
+      const targetFriction = step4Record?.["Target Friction"]?.toString() || "";
+      const frictionCost = frictionCostMap.get(targetFriction) || 0;
+
+      const ratio = frictionCost > 0 ? expectedValue / frictionCost : 0;
+      allRatios.push(ratio);
+      ratioByUseCase[record.ID] = ratio;
     }
 
-    // Normalize all values to 1-10 scale using min-max
-    const normalizedValues = normalizeValuesToScale(allValues);
+    // Min-max normalize all ratios to 1-10 scale
+    const minRatio = allRatios.length > 0 ? Math.min(...allRatios) : 0;
+    const maxRatio = allRatios.length > 0 ? Math.max(...allRatios) : 0;
     const normalizedByUseCase: Record<string, number> = {};
     const step7Records = step7Active.data as Step7Record[];
-    step7Records.forEach((record, idx) => {
-      normalizedByUseCase[record.ID] = normalizedValues[idx];
+    step7Records.forEach((record) => {
+      const ratio = ratioByUseCase[record.ID] ?? 0;
+      let normalizedValue: number;
+      if (maxRatio === minRatio) {
+        normalizedValue = 5.5;
+      } else {
+        normalizedValue = Math.round((1 + ((ratio - minRatio) / (maxRatio - minRatio)) * 9) * 100) / 100;
+      }
+      normalizedByUseCase[record.ID] = normalizedValue;
     });
+    console.log(`[postProcessAnalysis] Value Scores: EV/Friction ratio range [${minRatio.toFixed(2)} - ${maxRatio.toFixed(2)}], normalized to 1-10`);
 
     // Step 2: Build corrected Step 7 data with new priority scoring
     const correctedStep7Data: any[] = [];
@@ -1516,12 +1647,12 @@ export function postProcessAnalysis(analysisResult: any): any {
     totalMonthlyTokens,
   });
 
-  // Get top 10 use cases by priority score (new 1-10 scale)
+  // Get top 12 use cases by priority score (new 1-10 scale)
   const sortedUseCases = [...(step7Active?.data || step7?.data || [])].sort(
     (a: any, b: any) => (b["Priority Score"] || b["Priority Score (0-100)"] || 0) - (a["Priority Score"] || a["Priority Score (0-100)"] || 0)
   );
 
-  const topUseCases = sortedUseCases.slice(0, 10).map((uc: any, index: number) => {
+  const topUseCases = sortedUseCases.slice(0, 12).map((uc: any, index: number) => {
     const step5Record = correctedStep5Data.find(r => r.ID === uc.ID);
     return {
       rank: index + 1,

@@ -1215,7 +1215,7 @@ export function extractUseCasesFromAnalysis(analysis: any): UseCase[] {
     });
   }
   
-  return useCases.slice(0, 10);
+  return useCases.slice(0, 12);
 }
 
 // ============================================================================

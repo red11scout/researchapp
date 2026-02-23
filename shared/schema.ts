@@ -564,66 +564,137 @@ export const DEFAULT_FORMULAS: Record<CalculatedFieldKey, {
 // WORKFLOW DATA TYPES - Miro-Ready Process Flow Generation
 // ============================================================================
 
-// Agentic Patterns for AI use cases
+// Consolidated Agentic Patterns (12 patterns: 7 single-agent, 5 multi-agent)
 export const AGENTIC_PATTERNS = [
-  "Orchestrator-Workers",
-  "Semantic Router", 
+  // Single-Agent Patterns
+  "Reflection",
+  "Tool Use",
+  "Planning",
   "ReAct Loop",
-  "Drafter-Critic",
+  "Prompt Chaining",
+  "Semantic Router",
   "Constitutional Guardrail",
-  "RAG Detective",
-  "Memetic Agent",
-  "Human-in-the-Loop"
+  // Multi-Agent Patterns
+  "Orchestrator-Workers",
+  "Agent Handoff",
+  "Parallelization",
+  "Generator-Critic",
+  "Group Chat",
 ] as const;
 
 export type AgenticPattern = typeof AGENTIC_PATTERNS[number];
 
+export type AgenticPatternType = "single-agent" | "multi-agent";
+export type PatternComplexity = "low" | "medium" | "high";
+
+// Legacy pattern name mapping (for backward compatibility with existing analyses)
+export const LEGACY_PATTERN_MAP: Record<string, AgenticPattern> = {
+  "Drafter-Critic": "Generator-Critic",
+  "RAG Detective": "Tool Use",
+  "Memetic Agent": "Reflection",
+  "Human-in-the-Loop": "Constitutional Guardrail",
+};
+
+// Resolve a pattern name (handles legacy names)
+export function resolvePatternName(name: string): AgenticPattern {
+  if (!name) return "Prompt Chaining";
+  const trimmed = name.trim();
+  if (AGENTIC_PATTERNS.includes(trimmed as AgenticPattern)) return trimmed as AgenticPattern;
+  return LEGACY_PATTERN_MAP[trimmed] || "Prompt Chaining";
+}
+
 // Agentic Pattern descriptions for UI
-export const AGENTIC_PATTERN_META: Record<AgenticPattern, { 
-  description: string; 
+export const AGENTIC_PATTERN_META: Record<AgenticPattern, {
+  description: string;
   icon: string;
+  type: AgenticPatternType;
+  complexity: PatternComplexity;
   useCaseExamples: string[];
 }> = {
-  "Orchestrator-Workers": {
-    description: "Multi-step complex tasks with coordinated sub-agents",
-    icon: "🎭",
-    useCaseExamples: ["Multi-department analysis", "Complex document processing", "End-to-end workflows"]
+  "Reflection": {
+    description: "Self-critique loops where AI evaluates and refines its own outputs iteratively",
+    icon: "🪞",
+    type: "single-agent",
+    complexity: "low",
+    useCaseExamples: ["Content quality review", "Code generation & testing", "Fact-checking"]
   },
-  "Semantic Router": {
-    description: "Classification and intelligent routing decisions",
-    icon: "🔀",
-    useCaseExamples: ["Support ticket triage", "Lead qualification", "Intent classification"]
+  "Tool Use": {
+    description: "LLM invokes external tools, APIs, and databases during reasoning",
+    icon: "🔧",
+    type: "single-agent",
+    complexity: "medium",
+    useCaseExamples: ["Research assistants", "Data lookup & enrichment", "Knowledge search"]
+  },
+  "Planning": {
+    description: "Explicitly breaks complex goals into ordered sub-tasks before execution",
+    icon: "📋",
+    type: "single-agent",
+    complexity: "medium",
+    useCaseExamples: ["Project planning", "Multi-step analysis", "Strategic initiatives"]
   },
   "ReAct Loop": {
     description: "Autonomous troubleshooting with reasoning and action cycles",
     icon: "🔄",
+    type: "single-agent",
+    complexity: "medium",
     useCaseExamples: ["Technical diagnostics", "Root cause analysis", "Self-healing systems"]
   },
-  "Drafter-Critic": {
-    description: "Content generation with iterative review and refinement",
-    icon: "✍️",
-    useCaseExamples: ["Report generation", "Email drafting", "Content creation"]
+  "Prompt Chaining": {
+    description: "Sequential pipeline of prompts where each step feeds the next",
+    icon: "🔗",
+    type: "single-agent",
+    complexity: "low",
+    useCaseExamples: ["Document processing pipelines", "Multi-stage extraction", "Report generation"]
+  },
+  "Semantic Router": {
+    description: "Classification and intelligent routing decisions",
+    icon: "🔀",
+    type: "single-agent",
+    complexity: "low",
+    useCaseExamples: ["Support ticket triage", "Lead qualification", "Intent classification"]
   },
   "Constitutional Guardrail": {
     description: "Compliance-sensitive outputs with built-in constraints",
     icon: "🛡️",
+    type: "single-agent",
+    complexity: "medium",
     useCaseExamples: ["Regulatory compliance", "Policy enforcement", "Risk assessment"]
   },
-  "RAG Detective": {
-    description: "Knowledge retrieval and research with source validation",
-    icon: "🔍",
-    useCaseExamples: ["Knowledge search", "Policy lookup", "Research assistance"]
+  "Orchestrator-Workers": {
+    description: "Multi-step complex tasks with coordinated sub-agents",
+    icon: "🎭",
+    type: "multi-agent",
+    complexity: "high",
+    useCaseExamples: ["Multi-department analysis", "Complex document processing", "End-to-end workflows"]
   },
-  "Memetic Agent": {
-    description: "Personalization with persistent memory and context",
-    icon: "🧠",
-    useCaseExamples: ["Customer personalization", "Adaptive learning", "User preference tracking"]
+  "Agent Handoff": {
+    description: "Decentralized delegation between specialist agents",
+    icon: "🤝",
+    type: "multi-agent",
+    complexity: "high",
+    useCaseExamples: ["Customer service escalation", "Specialist routing", "Cross-domain tasks"]
   },
-  "Human-in-the-Loop": {
-    description: "High-stakes approval gates requiring human oversight",
-    icon: "👤",
-    useCaseExamples: ["Approval workflows", "Exception handling", "Quality assurance"]
-  }
+  "Parallelization": {
+    description: "Concurrent independent sub-tasks with final synthesis",
+    icon: "⚡",
+    type: "multi-agent",
+    complexity: "medium",
+    useCaseExamples: ["Parallel data processing", "Multi-source analysis", "Batch operations"]
+  },
+  "Generator-Critic": {
+    description: "Content generation with iterative review and refinement by a separate critic",
+    icon: "✍️",
+    type: "multi-agent",
+    complexity: "medium",
+    useCaseExamples: ["Report generation", "Email drafting", "Content creation"]
+  },
+  "Group Chat": {
+    description: "Multi-agent deliberation and debate for complex decisions",
+    icon: "💬",
+    type: "multi-agent",
+    complexity: "high",
+    useCaseExamples: ["Multi-perspective analysis", "Consensus building", "Complex evaluations"]
+  },
 };
 
 // Workflow step actor

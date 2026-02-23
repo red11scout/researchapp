@@ -460,18 +460,14 @@ export function mapReportToDashboardData(report: Report): DashboardData {
 
   const matrixData: MatrixDataPoint[] = [];
   if (useCaseSource.length > 0) {
-    // Step 1: Normalize annual values to 1-10 scale using min-max
-    const annualValues = useCaseSource.map(uc => uc.annualValue || 0);
-    const normalizedValues = normalizeValuesToScale(annualValues);
-
-    // Step 2: Read readiness scores from Step 7 data (already computed by postprocessor)
+    // Read pre-computed Value Scores from Step 7 (EV/friction ratio, normalized 1-10)
     const step7Data = analysis.steps.find(s => s.step === 7)?.data;
 
     useCaseSource.forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
-      const normalizedValue = normalizedValues[idx] ?? 5.5;
 
-      // Get readiness score: prefer Step 7 data (computed by postprocessor), then Step 6 details
+      // Get Value Score and Readiness Score from Step 7 (computed by postprocessor)
+      let normalizedValue = 5.5;
       let readinessScore = details.readinessScore ?? 5;
       let priorityTier = "Foundation";
 
@@ -480,6 +476,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
           r["Use Case"] === uc.useCase || r.useCase === uc.useCase
         );
         if (step7Record) {
+          normalizedValue = step7Record["Value Score"] ?? normalizedValue;
           readinessScore = step7Record["Readiness Score"] ?? step7Record["Feasibility Score"] ?? readinessScore;
           priorityTier = step7Record["Priority Tier"] ?? priorityTier;
         }
@@ -515,7 +512,7 @@ export function mapReportToDashboardData(report: Report): DashboardData {
   // Use Case cards
   const useCaseItems: UseCase[] = [];
   if (useCaseSource.length > 0) {
-    useCaseSource.slice(0, 10).forEach((uc, idx) => {
+    useCaseSource.slice(0, 12).forEach((uc, idx) => {
       const details = extractUseCaseDetails(analysis.steps, uc.useCase);
       const step5 = analysis.steps.find(s => s.step === 5);
       let impactText = "Improves operational efficiency";
@@ -585,6 +582,12 @@ export function mapReportToDashboardData(report: Report): DashboardData {
       items: useCaseItems
     }
   };
+
+  // Pass raw Step 4 data for detailed card layout
+  const step4 = analysis.steps.find((s: any) => s.step === 4);
+  if (step4?.data && Array.isArray(step4.data) && step4.data.length > 0) {
+    dashboardOutput.useCaseDetails = step4.data;
+  }
 
   // Add optional properties if they exist
   if (scenarioComparison) {

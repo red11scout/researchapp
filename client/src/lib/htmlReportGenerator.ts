@@ -214,7 +214,7 @@ export function generateProfessionalHTMLReport(
             </thead>
             <tbody>
               ${topUseCases
-                .slice(0, 10)
+                .slice(0, 12)
                 .map(
                   (uc: any, idx: number) => `
               <tr>
@@ -621,49 +621,209 @@ export function generateProfessionalHTMLReport(
     `;
   };
 
-  // Generate use cases table
+  // Generate use cases table (card-based layout grouped by Strategic Theme)
   const generateUseCasesTable = (): string => {
     const step4 = getStepData(4);
     const data = (step4.data as any[]) || [];
 
     if (!data || data.length === 0) return '';
 
+    // Single-agent agentic patterns get navy badge; multi-agent patterns get blue badge
+    const singleAgentPatterns = [
+      'reflection', 'tool use', 'planning', 'react loop', 'react',
+      'prompt chaining', 'semantic router', 'constitutional guardrail',
+    ];
+
+    const getPatternBadgeClass = (pattern: string): string => {
+      const normalized = (pattern || '').trim().toLowerCase();
+      return singleAgentPatterns.some(p => normalized.includes(p))
+        ? 'uc-badge-navy'
+        : 'uc-badge-blue';
+    };
+
+    // Parse a field that may be comma-separated string, JSON array, or plain string
+    const parseList = (value: any): string[] => {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+      const str = String(value).trim();
+      if (str.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(str);
+          if (Array.isArray(parsed)) return parsed.map((v: any) => String(v).trim()).filter(Boolean);
+        } catch { /* fall through to comma split */ }
+      }
+      return str.split(',').map(s => s.trim()).filter(Boolean);
+    };
+
+    // Group rows by Strategic Theme
+    const grouped: Record<string, any[]> = {};
+    for (const row of data) {
+      const theme = (row['Strategic Theme'] || 'Uncategorized').trim();
+      if (!grouped[theme]) grouped[theme] = [];
+      grouped[theme].push(row);
+    }
+
+    // Build cards for each theme group
+    const themeBlocks = Object.entries(grouped).map(([theme, rows]) => {
+      const themeDivider = `
+        <div class="uc-theme-divider">
+          <span class="uc-theme-divider-name">${escapeHtml(theme)}</span>
+          <span class="uc-theme-divider-count">${rows.length} use case${rows.length !== 1 ? 's' : ''}</span>
+        </div>`;
+
+      const cards = rows.map((row: any) => {
+        const id = row['ID'] || '';
+        const name = row['Use Case Name'] || row['Use Case'] || '';
+        const description = row['Description'] || '';
+        const targetFriction = row['Target Friction'] || '';
+        const aiPrimitives = parseList(row['AI Primitives']);
+        const primaryPattern = (row['Primary Pattern'] || row['Agentic Pattern'] || '').trim();
+        const alternativePattern = (row['Alternative Pattern'] || '').trim();
+        const patternRationale = (row['Pattern Rationale'] || '').trim();
+        const epochFlags = (row['EPOCH Flags'] || '').trim();
+        const hitl = row['Human-in-the-Loop Checkpoint'] || '';
+        const func = row['Function'] || '';
+        const subFunc = row['Sub-Function'] || '';
+        const desiredOutcomes = parseList(row['Desired Outcomes']);
+        const dataTypes = parseList(row['Data Types']);
+        const integrations = parseList(row['Integrations']);
+
+        // --- Header ---
+        const headerBadges = [
+          primaryPattern
+            ? `<span class="${getPatternBadgeClass(primaryPattern)}">${escapeHtml(primaryPattern)}</span>`
+            : '',
+          func
+            ? `<span class="uc-badge-slate">${escapeHtml(func)}${subFunc ? ' / ' + escapeHtml(subFunc) : ''}</span>`
+            : '',
+        ].filter(Boolean).join(' ');
+
+        const header = `
+          <div class="uc-card-header">
+            <span class="uc-card-id">${escapeHtml(id)}</span>
+            <span class="uc-card-name">${escapeHtml(name)}</span>
+            ${headerBadges}
+          </div>`;
+
+        // --- Body sections ---
+        const descriptionHtml = description
+          ? `<div class="uc-description">${escapeHtml(description)}</div>`
+          : '';
+
+        const frictionHtml = targetFriction
+          ? `<div class="uc-field-row">
+              <span class="uc-field-label">Target Friction</span>
+              <span class="uc-field-value">${escapeHtml(targetFriction)}</span>
+            </div>`
+          : '';
+
+        const primitivesHtml = aiPrimitives.length > 0
+          ? `<div style="margin-bottom: 10px;">
+              <div class="uc-field-label" style="margin-bottom: 6px;">AI Primitives</div>
+              <div class="uc-chips">
+                ${aiPrimitives.map(p => `<span class="uc-chip-green">${escapeHtml(p)}</span>`).join('')}
+              </div>
+            </div>`
+          : '';
+
+        const patternBoxHtml = (primaryPattern || alternativePattern)
+          ? `<div class="uc-pattern-box">
+              <div class="uc-pattern-box-header" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div>
+                  <div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">PRIMARY PATTERN</div>
+                  <span class="${getPatternBadgeClass(primaryPattern)}">${escapeHtml(primaryPattern || 'Not assigned')}</span>
+                </div>
+                <div>
+                  <div style="font-size:9px;color:#94a3b8;font-weight:600;text-transform:uppercase;margin-bottom:4px;">ALTERNATIVE PATTERN</div>
+                  <span class="${alternativePattern ? getPatternBadgeClass(alternativePattern) + '" style="opacity:0.75' : 'uc-badge-slate'}">${escapeHtml(alternativePattern || 'None')}</span>
+                </div>
+              </div>
+              ${patternRationale ? `<div class="uc-pattern-rationale">${escapeHtml(patternRationale)}</div>` : ''}
+            </div>`
+          : '';
+
+        // --- EPOCH Flags ---
+        const epochColors: Record<string, string> = {
+          'E': 'background:#fef2f2;color:#b91c1c;border-color:#fecaca',
+          'P': 'background:#fff7ed;color:#c2410c;border-color:#fed7aa',
+          'O': 'background:#fefce8;color:#a16207;border-color:#fef08a',
+          'C': 'background:#faf5ff;color:#7e22ce;border-color:#e9d5ff',
+          'H': 'background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe',
+        };
+        const epochLabels: Record<string, string> = {
+          'E': 'Ethical', 'P': 'Political', 'O': 'Operational', 'C': 'Creative', 'H': 'Human-centric'
+        };
+        const epochHtml = epochFlags
+          ? (() => {
+              const flags = epochFlags.split(',').map(f => f.trim().charAt(0).toUpperCase()).filter(f => epochLabels[f]);
+              if (flags.length === 0) return '';
+              return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px;">
+                <span style="font-size:9px;font-weight:600;color:#94a3b8;text-transform:uppercase;">E.P.O.C.H.:</span>
+                ${flags.map(f => `<span style="font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid;font-weight:500;${epochColors[f] || ''}">${epochLabels[f]}</span>`).join('')}
+              </div>`;
+            })()
+          : '';
+
+        const outcomesHtml = desiredOutcomes.length > 0
+          ? `<div style="margin-bottom: 10px;">
+              <div class="uc-field-label" style="margin-bottom: 6px;">Desired Outcomes</div>
+              <ul class="uc-outcomes-list">
+                ${desiredOutcomes.map(o => `<li>${escapeHtml(o)}</li>`).join('')}
+              </ul>
+            </div>`
+          : '';
+
+        const dataTypesHtml = dataTypes.length > 0
+          ? `<div style="margin-bottom: 10px;">
+              <div class="uc-field-label" style="margin-bottom: 6px;">Data Types</div>
+              <div class="uc-chips">
+                ${dataTypes.map(d => `<span class="uc-chip-blue">${escapeHtml(d)}</span>`).join('')}
+              </div>
+            </div>`
+          : '';
+
+        const integrationsHtml = integrations.length > 0
+          ? `<div style="margin-bottom: 10px;">
+              <div class="uc-field-label" style="margin-bottom: 6px;">Integrations</div>
+              <div class="uc-chips">
+                ${integrations.map(i => `<span class="uc-chip-slate">${escapeHtml(i)}</span>`).join('')}
+              </div>
+            </div>`
+          : '';
+
+        const hitlHtml = hitl
+          ? `<div class="uc-hitl">
+              <div class="uc-hitl-label">Human-in-the-Loop Checkpoint</div>
+              <div class="uc-hitl-value">${escapeHtml(hitl)}</div>
+            </div>`
+          : '';
+
+        return `
+          <div class="uc-card">
+            ${header}
+            <div class="uc-card-body">
+              ${descriptionHtml}
+              ${frictionHtml}
+              ${primitivesHtml}
+              ${patternBoxHtml}
+              ${epochHtml}
+              ${outcomesHtml}
+              ${dataTypesHtml}
+              ${integrationsHtml}
+              ${hitlHtml}
+            </div>
+          </div>`;
+      }).join('');
+
+      return themeDivider + cards;
+    }).join('');
+
     return `
       <div class="section" id="use-cases">
         <h2 class="section-heading">AI Use Case Generation</h2>
-        <div class="table-wrap scrollable">
-          <table class="data-table compact">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Use Case Name</th>
-                <th>Description</th>
-                <th>Target Friction</th>
-                <th>AI Primitives</th>
-                <th>Human Checkpoint</th>
-                <th>Function</th>
-                <th>Sub-Function</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data
-                .map(
-                  (row: any) => `
-              <tr>
-                <td class="font-semibold">${escapeHtml(row['ID'] || '')}</td>
-                <td class="font-medium">${escapeHtml(row['Use Case Name'] || row['Use Case'] || '')}</td>
-                <td class="desc-cell">${escapeHtml(row['Description'] || '')}</td>
-                <td class="desc-cell">${escapeHtml(row['Target Friction'] || '')}</td>
-                <td class="desc-cell">${escapeHtml(row['AI Primitives'] || '')}</td>
-                <td class="desc-cell">${escapeHtml(row['Human-in-the-Loop Checkpoint'] || '')}</td>
-                <td>${escapeHtml(row['Function'] || '')}</td>
-                <td>${escapeHtml(row['Sub-Function'] || '')}</td>
-              </tr>
-            `
-                )
-                .join('')}
-            </tbody>
-          </table>
+        <p class="section-intro">${data.length} use cases generated across ${Object.keys(grouped).length} strategic theme${Object.keys(grouped).length !== 1 ? 's' : ''}, each mapped to target friction points with agentic pattern analysis and human oversight checkpoints.</p>
+        <div class="uc-cards-container">
+          ${themeBlocks}
         </div>
       </div>
     `;
@@ -911,7 +1071,7 @@ export function generateProfessionalHTMLReport(
 
           <p style="margin-bottom: 12px;"><strong>Data Maturity (0.60&ndash;1.00):</strong> Organizational data quality and accessibility scaled from Level 1 (ad-hoc, 0.60) to Level 5 (optimizing, 1.00). Most organizations assess at Level 2 (0.75). Derived from data governance maturity, system integration level, and data quality metrics.</p>
 
-          <p style="margin-bottom: 12px;"><strong>Value Normalization (1&ndash;10):</strong> Min-max normalization across all use cases: Score = 1 + ((Value &minus; Min) / (Max &minus; Min)) &times; 9. Ensures relative comparison is deterministic and scales dynamically with report data.</p>
+          <p style="margin-bottom: 12px;"><strong>Value Score (1&ndash;10):</strong> Expected Value (Total Annual Value &times; Probability of Success) divided by the Friction Annual Cost of the targeted friction point, then min-max normalized across all use cases to a 1&ndash;10 scale. This directly ties use case value to the friction cost it addresses, providing a deterministic measure of return on friction investment.</p>
 
           <p style="margin-bottom: 12px;"><strong>Readiness Score (1&ndash;10):</strong> Weighted composite of four components: Organizational Capacity (30%), Data Availability &amp; Quality (30%), Technical Infrastructure (20%), and AI-Specific Governance (20%). Each component scored 1&ndash;10 based on organizational assessment.</p>
 
@@ -1598,6 +1758,257 @@ export function generateProfessionalHTMLReport(
     .font-semibold { font-weight: 600; }
     .font-bold { font-weight: 700; }
     .muted { color: ${colors.neutral400}; font-size: 12px; }
+
+    /* ===== USE CASE CARDS ===== */
+    .uc-cards-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .uc-theme-divider {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: ${colors.navy};
+      color: ${colors.white};
+      padding: 10px 20px;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    .uc-theme-divider-name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+    }
+
+    .uc-theme-divider-count {
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(255,255,255,0.18);
+      padding: 2px 10px;
+      border-radius: 100px;
+    }
+
+    .uc-card {
+      background: ${colors.white};
+      border: 1px solid ${colors.neutral200};
+      border-radius: 10px;
+      overflow: hidden;
+      page-break-inside: avoid;
+    }
+
+    .uc-card-header {
+      background: ${colors.neutral50};
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid ${colors.neutral200};
+    }
+
+    .uc-card-id {
+      font-family: 'SF Mono', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: ${colors.neutral500};
+      background: ${colors.neutral200};
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .uc-card-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: ${colors.navy};
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .uc-badge-navy {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 10px;
+      font-weight: 700;
+      background: ${colors.navy};
+      color: ${colors.white};
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .uc-badge-blue {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 10px;
+      font-weight: 700;
+      background: #02a2fd;
+      color: ${colors.white};
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .uc-badge-slate {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 10px;
+      font-weight: 600;
+      background: ${colors.neutral100};
+      color: ${colors.neutral600};
+    }
+
+    .uc-card-body {
+      padding: 16px 20px;
+    }
+
+    .uc-description {
+      font-size: 13px;
+      color: ${colors.neutral600};
+      line-height: 1.65;
+      margin-bottom: 12px;
+    }
+
+    .uc-field-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .uc-field-label {
+      font-weight: 600;
+      color: ${colors.neutral500};
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .uc-field-value {
+      color: ${colors.neutral700};
+    }
+
+    .uc-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .uc-chip-green {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #ECFDF5;
+      color: #065F46;
+      border: 1px solid #A7F3D0;
+    }
+
+    .uc-chip-blue {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #EFF6FF;
+      color: ${colors.primary};
+      border: 1px solid #BFDBFE;
+    }
+
+    .uc-chip-slate {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      background: ${colors.neutral100};
+      color: ${colors.neutral600};
+      border: 1px solid ${colors.neutral200};
+    }
+
+    .uc-pattern-box {
+      border: 1px solid ${colors.neutral200};
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+      background: ${colors.neutral50};
+    }
+
+    .uc-pattern-box-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .uc-pattern-box-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: ${colors.neutral500};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .uc-pattern-rationale {
+      font-size: 12px;
+      color: ${colors.neutral600};
+      line-height: 1.6;
+    }
+
+    .uc-outcomes-list {
+      list-style: none;
+      margin: 0 0 10px;
+      padding: 0;
+    }
+
+    .uc-outcomes-list li {
+      padding: 3px 0;
+      font-size: 12px;
+      color: ${colors.neutral600};
+      line-height: 1.5;
+    }
+
+    .uc-outcomes-list li::before {
+      content: '\\2022';
+      color: ${colors.primary};
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    .uc-hitl {
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 12px;
+    }
+
+    .uc-hitl-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: ${colors.primary};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .uc-hitl-value {
+      font-size: 12px;
+      color: ${colors.neutral700};
+      line-height: 1.6;
+    }
+
+    @media print {
+      .uc-card { page-break-inside: avoid; }
+      .uc-theme-divider { page-break-after: avoid; }
+    }
 
     /* ===== PRINT ===== */
     @media print {
